@@ -1,0 +1,63 @@
+# Quality rails
+
+Most code in this repository is written by coding agents, so correctness has to be checked by machines. A person owns the invariants; the rails check the implementation against them. All rails are set up in milestone 0, before feature work.
+
+| Layer | Tool | Scope |
+|---|---|---|
+| Types | TypeScript 7, `strict` | Everything |
+| Effect diagnostics | `@effect/tsgo` | Everything |
+| Lint | Oxlint, type-aware | Everything |
+| Format | Oxfmt | Everything |
+| Unit and Effect tests | Vitest 5 with `@effect/vitest` | Everything |
+| Property tests | Inputs generated from the app's own Schemas | `packages/core` |
+| Path checking | The recipe validator, run against the six recipe fixtures | `packages/core` |
+| Run state machine | Random event sequences against `transition`, invariants checked after each event | `packages/core` |
+| UI logic | Foldkit Story and Scene tests | `apps/web` |
+| Test quality | Stryker mutation testing | `packages/core` |
+| Dead code and dependencies | knip | Everything |
+| Import boundary | A check that `packages/core` imports no other workspace package | `packages/core` |
+| Git hooks | lefthook | Lint, format, types on commit |
+| CI | GitHub Actions | All of the above on every push |
+| Integration | A temporary Alchemy stack per pull request, destroyed afterwards | `apps/engine`, `infra` |
+| Tracing | Effect tracing exported over OTLP, one span per run step | `apps/engine` |
+
+## Invariants
+
+- Invariants live in `packages/core/src/invariants/`.
+- They are written and reviewed by a person.
+- A coding agent may add one. Changing or removing one needs the owner's explicit approval.
+- A Claude Code hook flags any edit in that folder.
+
+## Lint preset
+
+Milestone 0 trials `@cloudflare/oxlint-config` (0.2.0, first published 2026-11-20) as the base Oxlint config, pinned exactly, with overrides for Effect-style code.
+
+- **Why try it:** every rule is listed explicitly at error level, and it includes the strict type-aware rules this project wants: no `any`, the `no-unsafe-*` family, exhaustive switches, no floating or misused promises, and no unused disable comments.
+- **What it is:** `@nkzw/oxlint-config` 4.1.0 plus about 19 Cloudflare additions, about 228 rules in total. Published by Cloudflare with provenance. It is 0.x with no stated stability policy, and nothing in it is specific to Workers.
+- **What it does not cover:** a discarded Effect value. `@effect/tsgo` covers that, so both tools are needed.
+- **Fallback (agreed):** if the trial needs more than about ten overrides or produces false positives on Effect code, write our own config and copy the strict type-aware rules we want.
+- **Requirements to confirm:** it needs type-aware linting through `tsrs`, currently a 7.1 beta, and is configured in `oxlint.config.ts`, not `.oxlintrc.json`.
+
+### Known conflicts
+
+These were inferred from the rule list on 2026-11-23. None has been run against Effect code yet. Update this table with what the trial finds.
+
+| Rule | Conflict | Planned action |
+|---|---|---|
+| `import-x/no-namespace` | Bans `import * as X`, which Effect and Alchemy code uses | Off |
+| `@nkzw/no-instanceof` | Blocks `instanceof` checks on tagged error classes | Off |
+| `require-yield` | Flags an `Effect.gen` generator with no `yield` | Off |
+| `typescript/unbound-method` | May fire on class-based services and destructured methods | Adjust if it fires |
+| `quality/no-unknown-returns`, `quality/no-unknown-type-aliases` | Flag explicit `unknown`, which decoders return | Adjust if they fire |
+| `typescript/no-unsafe-type-assertion`, `no-unsafe-*`, `no-explicit-any` | Friction in generic-heavy code | Keep. Fix the code, or disable per line with a reason |
+| `unicorn/consistent-function-scoping` | Style only | Adjust if noisy |
+| `unicorn/prefer-top-level-await` | Style only; Effect programs are run through a runtime | Adjust if noisy |
+| `typescript/array-type` (forces `Array<T>`) | Style only | Keep unless it clashes with generated code |
+| `no-console` | Applies everywhere, including scripts | Keep. Use Effect's logger |
+| React and `jsx-a11y` rules (about 40) | Do not apply to Foldkit | Leave on; they should never fire |
+
+`reportUnusedDisableDirectives` is an error in this preset, so every disable comment must still be needed.
+
+## Items to confirm in milestone 0
+
+See "Not yet verified" in [versions.md](versions.md). If a tool turns out not to work with the current stack, record the replacement here.

@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Alchemy local state and Cloudflare local dev
+.alchemy/
+.wrangler/
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+.dev.vars
+
+# Test and mutation reports
+coverage/
+reports/
+.stryker-tmp/
+
+# Editor and OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Superseded planning material, kept locally only
+docs/archive/
+
+# Claude Code local settings
+.claude/settings.local.json
