@@ -1,0 +1,302 @@
+{
+  "$schema": "./recipe.schema.json",
+  "format": 1,
+  "id": "schema-migration",
+  "version": 1,
+  "title": "Schema migration",
+  "description": "Applies a database migration to a copy first, then, after approval, to production, and restores production if the smoke test fails.",
+  "start": "export",
+  "inputs": {
+    "production": {
+      "type": {
+        "_tag": "Resource",
+        "kind": "cloudflare.d1.database"
+      }
+    },
+    "migration": {
+      "type": {
+        "_tag": "Text"
+      }
+    },
+    "smokeTest": {
+      "type": {
+        "_tag": "Text"
+      }
+    }
+  },
+  "nodes": [
+    {
+      "_tag": "Step",
+      "id": "export",
+      "block": "d1.exportDatabase",
+      "version": 1,
+      "inputs": {
+        "database": {
+          "_tag": "RecipeInput",
+          "name": "production"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "createCopy",
+      "block": "d1.createTemporaryDatabase",
+      "version": 1,
+      "inputs": {
+        "namePrefix": {
+          "_tag": "Literal",
+          "value": "schema-migration"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "restoreCopy",
+      "block": "d1.importExport",
+      "version": 1,
+      "inputs": {
+        "export": {
+          "_tag": "StepOutput",
+          "step": "export",
+          "output": "export"
+        },
+        "into": {
+          "_tag": "StepOutput",
+          "step": "createCopy",
+          "output": "database"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "migrateCopy",
+      "block": "d1.applyMigration",
+      "version": 1,
+      "inputs": {
+        "database": {
+          "_tag": "StepOutput",
+          "step": "createCopy",
+          "output": "database"
+        },
+        "migration": {
+          "_tag": "RecipeInput",
+          "name": "migration"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "checkCopy",
+      "block": "d1.smokeTest",
+      "version": 1,
+      "inputs": {
+        "database": {
+          "_tag": "StepOutput",
+          "step": "createCopy",
+          "output": "database"
+        },
+        "statement": {
+          "_tag": "RecipeInput",
+          "name": "smokeTest"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "approve",
+      "block": "gate.approveMigration",
+      "version": 1,
+      "inputs": {
+        "database": {
+          "_tag": "RecipeInput",
+          "name": "production"
+        },
+        "migration": {
+          "_tag": "RecipeInput",
+          "name": "migration"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "bookmark",
+      "block": "d1.captureBookmark",
+      "version": 1,
+      "inputs": {
+        "database": {
+          "_tag": "RecipeInput",
+          "name": "production"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "migrateProduction",
+      "block": "d1.applyMigration",
+      "version": 1,
+      "inputs": {
+        "database": {
+          "_tag": "RecipeInput",
+          "name": "production"
+        },
+        "migration": {
+          "_tag": "RecipeInput",
+          "name": "migration"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "smoke",
+      "block": "d1.smokeTest",
+      "version": 1,
+      "inputs": {
+        "database": {
+          "_tag": "RecipeInput",
+          "name": "production"
+        },
+        "statement": {
+          "_tag": "RecipeInput",
+          "name": "smokeTest"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "revert",
+      "block": "d1.restoreToBookmark",
+      "version": 1,
+      "inputs": {
+        "database": {
+          "_tag": "RecipeInput",
+          "name": "production"
+        },
+        "bookmark": {
+          "_tag": "StepOutput",
+          "step": "bookmark",
+          "output": "bookmark"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "destroyCopy",
+      "block": "d1.destroyDatabase",
+      "version": 1,
+      "inputs": {
+        "database": {
+          "_tag": "OptionalStepOutput",
+          "step": "createCopy",
+          "output": "database"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "export",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "createCopy"
+      }
+    },
+    {
+      "from": "createCopy",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "restoreCopy"
+      }
+    },
+    {
+      "from": "restoreCopy",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "migrateCopy"
+      }
+    },
+    {
+      "from": "migrateCopy",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "checkCopy"
+      }
+    },
+    {
+      "from": "checkCopy",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "approve"
+      }
+    },
+    {
+      "from": "approve",
+      "on": "Approved",
+      "to": {
+        "_tag": "Step",
+        "id": "bookmark"
+      }
+    },
+    {
+      "from": "bookmark",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "migrateProduction"
+      }
+    },
+    {
+      "from": "migrateProduction",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "smoke"
+      }
+    },
+    {
+      "from": "migrateProduction",
+      "on": "Failed",
+      "to": {
+        "_tag": "Step",
+        "id": "revert"
+      }
+    },
+    {
+      "from": "smoke",
+      "on": "Failed",
+      "to": {
+        "_tag": "Step",
+        "id": "revert"
+      }
+    },
+    {
+      "from": "revert",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "End",
+        "result": "Failed",
+        "undo": "Skip"
+      }
+    }
+  ],
+  "finally": ["destroyCopy"],
+  "invariants": [
+    {
+      "rule": "CleanedUp",
+      "step": "createCopy",
+      "output": "database"
+    },
+    {
+      "rule": "RequiredForSuccess",
+      "step": "checkCopy"
+    },
+    {
+      "rule": "RequiredForSuccess",
+      "step": "smoke"
+    }
+  ]
+}

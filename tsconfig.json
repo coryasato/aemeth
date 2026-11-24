@@ -8,6 +8,12 @@
       "path": "packages/blocks"
     },
     {
+      "path": "packages/recipes"
+    },
+    {
+      "path": "packages/recipes/scripts"
+    },
+    {
       "path": "apps/engine"
     },
     {

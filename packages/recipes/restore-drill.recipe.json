@@ -1,0 +1,157 @@
+{
+  "$schema": "./recipe.schema.json",
+  "format": 1,
+  "id": "restore-drill",
+  "version": 1,
+  "title": "Restore drill",
+  "description": "Proves that a backup can be restored. Production is only read.",
+  "start": "export",
+  "inputs": {
+    "production": {
+      "type": {
+        "_tag": "Resource",
+        "kind": "cloudflare.d1.database"
+      }
+    }
+  },
+  "nodes": [
+    {
+      "_tag": "Step",
+      "id": "export",
+      "block": "d1.exportDatabase",
+      "version": 1,
+      "inputs": {
+        "database": {
+          "_tag": "RecipeInput",
+          "name": "production"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "createTemp",
+      "block": "d1.createTemporaryDatabase",
+      "version": 1,
+      "inputs": {
+        "namePrefix": {
+          "_tag": "Literal",
+          "value": "restore-drill"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "restore",
+      "block": "d1.importExport",
+      "version": 1,
+      "inputs": {
+        "export": {
+          "_tag": "StepOutput",
+          "step": "export",
+          "output": "export"
+        },
+        "into": {
+          "_tag": "StepOutput",
+          "step": "createTemp",
+          "output": "database"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "verify",
+      "block": "d1.checkAgainstExport",
+      "version": 1,
+      "inputs": {
+        "database": {
+          "_tag": "StepOutput",
+          "step": "createTemp",
+          "output": "database"
+        },
+        "rowCount": {
+          "_tag": "StepOutput",
+          "step": "export",
+          "output": "rowCount"
+        },
+        "checksum": {
+          "_tag": "StepOutput",
+          "step": "export",
+          "output": "checksum"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "destroyTemp",
+      "block": "d1.destroyDatabase",
+      "version": 1,
+      "inputs": {
+        "database": {
+          "_tag": "OptionalStepOutput",
+          "step": "createTemp",
+          "output": "database"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "record",
+      "block": "record.restoreDrill",
+      "version": 1,
+      "inputs": {
+        "rowsCompared": {
+          "_tag": "OptionalStepOutput",
+          "step": "verify",
+          "output": "rowsCompared"
+        },
+        "checksum": {
+          "_tag": "OptionalStepOutput",
+          "step": "export",
+          "output": "checksum"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "export",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "createTemp"
+      }
+    },
+    {
+      "from": "createTemp",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "restore"
+      }
+    },
+    {
+      "from": "restore",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "verify"
+      }
+    }
+  ],
+  "finally": ["destroyTemp", "record"],
+  "invariants": [
+    {
+      "rule": "NeverWritten",
+      "input": "production"
+    },
+    {
+      "rule": "CleanedUp",
+      "step": "createTemp",
+      "output": "database"
+    },
+    {
+      "rule": "RequiredForSuccess",
+      "step": "verify"
+    }
+  ]
+}

@@ -1,0 +1,222 @@
+{
+  "$schema": "./recipe.schema.json",
+  "format": 1,
+  "id": "artifacts-pipeline",
+  "version": 1,
+  "title": "Artifacts pipeline",
+  "description": "A change pipeline for agent-written code: fork a repository for one task, wait for the work, check it, and merge it after approval.",
+  "start": "fork",
+  "inputs": {
+    "repository": {
+      "type": {
+        "_tag": "Resource",
+        "kind": "artifacts.repository"
+      }
+    },
+    "task": {
+      "type": {
+        "_tag": "Text"
+      }
+    },
+    "tokenValidFor": {
+      "type": {
+        "_tag": "Duration"
+      }
+    },
+    "pushTimeout": {
+      "type": {
+        "_tag": "Duration"
+      }
+    }
+  },
+  "nodes": [
+    {
+      "_tag": "Step",
+      "id": "fork",
+      "block": "artifacts.forkRepository",
+      "version": 1,
+      "inputs": {
+        "repository": {
+          "_tag": "RecipeInput",
+          "name": "repository"
+        },
+        "task": {
+          "_tag": "RecipeInput",
+          "name": "task"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "token",
+      "block": "artifacts.issueToken",
+      "version": 1,
+      "inputs": {
+        "fork": {
+          "_tag": "StepOutput",
+          "step": "fork",
+          "output": "fork"
+        },
+        "validFor": {
+          "_tag": "RecipeInput",
+          "name": "tokenValidFor"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "wait",
+      "block": "artifacts.awaitPush",
+      "version": 1,
+      "inputs": {
+        "fork": {
+          "_tag": "StepOutput",
+          "step": "fork",
+          "output": "fork"
+        },
+        "timeout": {
+          "_tag": "RecipeInput",
+          "name": "pushTimeout"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "check",
+      "block": "artifacts.runChecks",
+      "version": 1,
+      "inputs": {
+        "fork": {
+          "_tag": "StepOutput",
+          "step": "fork",
+          "output": "fork"
+        },
+        "commit": {
+          "_tag": "StepOutput",
+          "step": "wait",
+          "output": "commit"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "approve",
+      "block": "gate.approveMerge",
+      "version": 1,
+      "inputs": {
+        "repository": {
+          "_tag": "RecipeInput",
+          "name": "repository"
+        },
+        "commit": {
+          "_tag": "StepOutput",
+          "step": "wait",
+          "output": "commit"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "merge",
+      "block": "artifacts.mergeFork",
+      "version": 1,
+      "inputs": {
+        "repository": {
+          "_tag": "RecipeInput",
+          "name": "repository"
+        },
+        "fork": {
+          "_tag": "StepOutput",
+          "step": "fork",
+          "output": "fork"
+        },
+        "commit": {
+          "_tag": "StepOutput",
+          "step": "wait",
+          "output": "commit"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "revokeToken",
+      "block": "artifacts.revokeToken",
+      "version": 1,
+      "inputs": {
+        "token": {
+          "_tag": "OptionalStepOutput",
+          "step": "token",
+          "output": "token"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "deleteFork",
+      "block": "artifacts.deleteFork",
+      "version": 1,
+      "inputs": {
+        "fork": {
+          "_tag": "OptionalStepOutput",
+          "step": "fork",
+          "output": "fork"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "fork",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "token"
+      }
+    },
+    {
+      "from": "token",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "wait"
+      }
+    },
+    {
+      "from": "wait",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "check"
+      }
+    },
+    {
+      "from": "check",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "approve"
+      }
+    },
+    {
+      "from": "approve",
+      "on": "Approved",
+      "to": {
+        "_tag": "Step",
+        "id": "merge"
+      }
+    }
+  ],
+  "finally": ["revokeToken", "deleteFork"],
+  "invariants": [
+    {
+      "rule": "CleanedUp",
+      "step": "token",
+      "output": "token"
+    },
+    {
+      "rule": "CleanedUp",
+      "step": "fork",
+      "output": "fork"
+    }
+  ]
+}

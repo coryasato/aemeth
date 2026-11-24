@@ -13,7 +13,7 @@ const Manifest = Schema.Struct({
 });
 
 // Ranges that point at a local folder rather than a published release.
-const localRange = /^(workspace|file|link|portal):/;
+const localRange = /^(workspace|file|link|portal):/u;
 
 describe("packages/core boundary", () => {
   it("lists no workspace or local package as a dependency", () => {

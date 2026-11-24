@@ -21,11 +21,12 @@ apps/
 packages/
   core/       Schemas, validator, transition function, invariants (pure, no infrastructure)
   blocks/     The block library
+  recipes/    The six recipe files and the JSON Schema generated for them
 infra/        Alchemy stack for everything above
 docs/         Plan, decisions, recipes, quality rails
 ```
 
-Dependencies point one way: `apps/*` and `packages/blocks` depend on `packages/core`. `packages/core` depends on nothing in this repository.
+Dependencies point one way: `apps/*`, `packages/blocks` and `packages/recipes` depend on `packages/core`. `packages/core` depends on nothing in this repository.
 
 ## Documents
 
@@ -40,4 +41,4 @@ Dependencies point one way: `apps/*` and `packages/blocks` depend on `packages/c
 
 ## Status
 
-M0 (workspace and rails) closed on 2026-11-23: every rail runs locally, on commit and in CI. M1 (core) is open: its spec is written, and the next step is Part B, the schemas and recipe files. Progress is in [docs/plan.md](docs/plan.md#status).
+M0 (workspace and rails) closed on 2026-11-23: every rail runs locally, on commit and in CI. M1 (core) is open: the block and recipe Schemas, the block declarations and the six recipe files are written, and the next step is Part C, the validator. Progress is in [docs/plan.md](docs/plan.md#status).

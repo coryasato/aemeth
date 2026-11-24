@@ -1,0 +1,147 @@
+{
+  "$schema": "./recipe.schema.json",
+  "format": 1,
+  "id": "environment-cleanup",
+  "version": 1,
+  "title": "Environment cleanup",
+  "description": "Removes stale preview stacks and resources with no owning stack, after a person approves exactly what will be destroyed.",
+  "start": "list",
+  "inputs": {
+    "app": {
+      "type": {
+        "_tag": "Resource",
+        "kind": "alchemy.app"
+      }
+    },
+    "olderThan": {
+      "type": {
+        "_tag": "Duration"
+      }
+    }
+  },
+  "nodes": [
+    {
+      "_tag": "Step",
+      "id": "list",
+      "block": "alchemy.listStaleResources",
+      "version": 1,
+      "inputs": {
+        "app": {
+          "_tag": "RecipeInput",
+          "name": "app"
+        },
+        "olderThan": {
+          "_tag": "RecipeInput",
+          "name": "olderThan"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "approve",
+      "block": "gate.approveDestruction",
+      "version": 1,
+      "inputs": {
+        "stacks": {
+          "_tag": "StepOutput",
+          "step": "list",
+          "output": "stacks"
+        },
+        "orphans": {
+          "_tag": "StepOutput",
+          "step": "list",
+          "output": "orphans"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "destroyStacks",
+      "block": "alchemy.destroyStack",
+      "version": 1,
+      "inputs": {
+        "stack": {
+          "_tag": "ForEachItem"
+        }
+      },
+      "forEach": {
+        "over": {
+          "_tag": "StepOutput",
+          "step": "approve",
+          "output": "approvedStacks"
+        },
+        "onItemFailure": "Continue"
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "destroyOrphans",
+      "block": "alchemy.destroyOrphanedResource",
+      "version": 1,
+      "inputs": {
+        "resource": {
+          "_tag": "ForEachItem"
+        }
+      },
+      "forEach": {
+        "over": {
+          "_tag": "StepOutput",
+          "step": "approve",
+          "output": "approvedOrphans"
+        },
+        "onItemFailure": "Continue"
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "record",
+      "block": "record.cleanup",
+      "version": 1,
+      "inputs": {
+        "approvedStacks": {
+          "_tag": "OptionalStepOutput",
+          "step": "approve",
+          "output": "approvedStacks"
+        },
+        "approvedOrphans": {
+          "_tag": "OptionalStepOutput",
+          "step": "approve",
+          "output": "approvedOrphans"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "list",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "approve"
+      }
+    },
+    {
+      "from": "approve",
+      "on": "Approved",
+      "to": {
+        "_tag": "Step",
+        "id": "destroyStacks"
+      }
+    },
+    {
+      "from": "destroyStacks",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "destroyOrphans"
+      }
+    }
+  ],
+  "finally": ["record"],
+  "invariants": [
+    {
+      "rule": "DestroysOnlyApproved",
+      "gate": "approve"
+    }
+  ]
+}

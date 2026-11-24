@@ -1,0 +1,393 @@
+{
+  "$schema": "./recipe.schema.json",
+  "format": 1,
+  "id": "gradual-release",
+  "version": 1,
+  "title": "Gradual release",
+  "description": "Promotes a new version to production in stages, checking error rates at each, and rolls back to the previous version if a check fails.",
+  "start": "plan",
+  "inputs": {
+    "worker": {
+      "type": {
+        "_tag": "Resource",
+        "kind": "cloudflare.worker"
+      }
+    },
+    "candidate": {
+      "type": {
+        "_tag": "Resource",
+        "kind": "cloudflare.workerVersion"
+      }
+    },
+    "observeFor": {
+      "type": {
+        "_tag": "Duration"
+      }
+    },
+    "maxErrorsPerThousand": {
+      "type": {
+        "_tag": "Integer"
+      }
+    }
+  },
+  "nodes": [
+    {
+      "_tag": "Step",
+      "id": "plan",
+      "block": "workers.planRelease",
+      "version": 1,
+      "inputs": {
+        "worker": {
+          "_tag": "RecipeInput",
+          "name": "worker"
+        },
+        "candidate": {
+          "_tag": "RecipeInput",
+          "name": "candidate"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "approve",
+      "block": "gate.approveRelease",
+      "version": 1,
+      "inputs": {
+        "plan": {
+          "_tag": "StepOutput",
+          "step": "plan",
+          "output": "plan"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "shift10",
+      "block": "workers.shiftTraffic",
+      "version": 1,
+      "inputs": {
+        "worker": {
+          "_tag": "RecipeInput",
+          "name": "worker"
+        },
+        "candidate": {
+          "_tag": "RecipeInput",
+          "name": "candidate"
+        },
+        "previous": {
+          "_tag": "StepOutput",
+          "step": "plan",
+          "output": "previous"
+        },
+        "percent": {
+          "_tag": "Literal",
+          "value": 10
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "check10",
+      "block": "workers.checkErrorRate",
+      "version": 1,
+      "inputs": {
+        "worker": {
+          "_tag": "RecipeInput",
+          "name": "worker"
+        },
+        "version": {
+          "_tag": "RecipeInput",
+          "name": "candidate"
+        },
+        "observeFor": {
+          "_tag": "RecipeInput",
+          "name": "observeFor"
+        },
+        "maxErrorsPerThousand": {
+          "_tag": "RecipeInput",
+          "name": "maxErrorsPerThousand"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "shift50",
+      "block": "workers.shiftTraffic",
+      "version": 1,
+      "inputs": {
+        "worker": {
+          "_tag": "RecipeInput",
+          "name": "worker"
+        },
+        "candidate": {
+          "_tag": "RecipeInput",
+          "name": "candidate"
+        },
+        "previous": {
+          "_tag": "StepOutput",
+          "step": "plan",
+          "output": "previous"
+        },
+        "percent": {
+          "_tag": "Literal",
+          "value": 50
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "check50",
+      "block": "workers.checkErrorRate",
+      "version": 1,
+      "inputs": {
+        "worker": {
+          "_tag": "RecipeInput",
+          "name": "worker"
+        },
+        "version": {
+          "_tag": "RecipeInput",
+          "name": "candidate"
+        },
+        "observeFor": {
+          "_tag": "RecipeInput",
+          "name": "observeFor"
+        },
+        "maxErrorsPerThousand": {
+          "_tag": "RecipeInput",
+          "name": "maxErrorsPerThousand"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "shift100",
+      "block": "workers.shiftTraffic",
+      "version": 1,
+      "inputs": {
+        "worker": {
+          "_tag": "RecipeInput",
+          "name": "worker"
+        },
+        "candidate": {
+          "_tag": "RecipeInput",
+          "name": "candidate"
+        },
+        "previous": {
+          "_tag": "StepOutput",
+          "step": "plan",
+          "output": "previous"
+        },
+        "percent": {
+          "_tag": "Literal",
+          "value": 100
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "check100",
+      "block": "workers.checkErrorRate",
+      "version": 1,
+      "inputs": {
+        "worker": {
+          "_tag": "RecipeInput",
+          "name": "worker"
+        },
+        "version": {
+          "_tag": "RecipeInput",
+          "name": "candidate"
+        },
+        "observeFor": {
+          "_tag": "RecipeInput",
+          "name": "observeFor"
+        },
+        "maxErrorsPerThousand": {
+          "_tag": "RecipeInput",
+          "name": "maxErrorsPerThousand"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "rollBack",
+      "block": "workers.rollBack",
+      "version": 1,
+      "inputs": {
+        "worker": {
+          "_tag": "RecipeInput",
+          "name": "worker"
+        },
+        "previous": {
+          "_tag": "StepOutput",
+          "step": "plan",
+          "output": "previous"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "record",
+      "block": "record.release",
+      "version": 1,
+      "inputs": {
+        "plan": {
+          "_tag": "OptionalStepOutput",
+          "step": "plan",
+          "output": "plan"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "plan",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "approve"
+      }
+    },
+    {
+      "from": "approve",
+      "on": "Approved",
+      "to": {
+        "_tag": "Step",
+        "id": "shift10"
+      }
+    },
+    {
+      "from": "shift10",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "check10"
+      }
+    },
+    {
+      "from": "check10",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "shift50"
+      }
+    },
+    {
+      "from": "shift50",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "check50"
+      }
+    },
+    {
+      "from": "check50",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "shift100"
+      }
+    },
+    {
+      "from": "shift100",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "check100"
+      }
+    },
+    {
+      "from": "shift10",
+      "on": "Failed",
+      "to": {
+        "_tag": "Step",
+        "id": "rollBack"
+      }
+    },
+    {
+      "from": "check10",
+      "on": "Failed",
+      "to": {
+        "_tag": "Step",
+        "id": "rollBack"
+      }
+    },
+    {
+      "from": "shift50",
+      "on": "Failed",
+      "to": {
+        "_tag": "Step",
+        "id": "rollBack"
+      }
+    },
+    {
+      "from": "check50",
+      "on": "Failed",
+      "to": {
+        "_tag": "Step",
+        "id": "rollBack"
+      }
+    },
+    {
+      "from": "shift100",
+      "on": "Failed",
+      "to": {
+        "_tag": "Step",
+        "id": "rollBack"
+      }
+    },
+    {
+      "from": "check100",
+      "on": "Failed",
+      "to": {
+        "_tag": "Step",
+        "id": "rollBack"
+      }
+    },
+    {
+      "from": "rollBack",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "End",
+        "result": "Failed",
+        "undo": "Skip"
+      }
+    }
+  ],
+  "finally": ["record"],
+  "invariants": [
+    {
+      "rule": "NoWriteBeforeApproval",
+      "input": "worker"
+    },
+    {
+      "rule": "AfterFailure",
+      "step": "shift10",
+      "then": "rollBack"
+    },
+    {
+      "rule": "AfterFailure",
+      "step": "check10",
+      "then": "rollBack"
+    },
+    {
+      "rule": "AfterFailure",
+      "step": "shift50",
+      "then": "rollBack"
+    },
+    {
+      "rule": "AfterFailure",
+      "step": "check50",
+      "then": "rollBack"
+    },
+    {
+      "rule": "AfterFailure",
+      "step": "shift100",
+      "then": "rollBack"
+    },
+    {
+      "rule": "AfterFailure",
+      "step": "check100",
+      "then": "rollBack"
+    }
+  ]
+}

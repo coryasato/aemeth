@@ -57,6 +57,18 @@
         "effect": "4.1.5",
       },
     },
+    "packages/recipes": {
+      "name": "@aemeth/recipes",
+      "version": "0.0.0",
+      "dependencies": {
+        "@aemeth/blocks": "workspace:*",
+        "@aemeth/core": "workspace:*",
+        "effect": "4.1.5",
+      },
+      "devDependencies": {
+        "@types/bun": "1.4.5",
+      },
+    },
   },
   "packages": {
     "@aemeth/blocks": ["@aemeth/blocks@workspace:packages/blocks"],
@@ -66,6 +78,8 @@
     "@aemeth/engine": ["@aemeth/engine@workspace:apps/engine"],
 
     "@aemeth/infra": ["@aemeth/infra@workspace:infra"],
+
+    "@aemeth/recipes": ["@aemeth/recipes@workspace:packages/recipes"],
 
     "@aemeth/web": ["@aemeth/web@workspace:apps/web"],
 

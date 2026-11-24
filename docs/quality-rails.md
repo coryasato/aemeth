@@ -28,6 +28,8 @@ Found in M1 Part A ([milestones/m1.md](milestones/m1.md)):
 - **Build generators constructively.** `Arbitrary.filter` that rejects small values stalls, so use `minLength`, bounded ranges, and add the wanted shape (a cycle, a back edge) by construction.
 - **Guide event sequences by state.** Uniform random events end a run within a few events and missed a planted bug; picking among the events that could arrive in the current state found and shrank it.
 - **Assert coverage.** Each property test over a generator counts the shapes or states it reached, and a following test fails if a required one was never reached, so a property cannot pass vacuously.
+- **Give a large Struct a larger `size`.** The derived generator gives a Struct at most `size` properties, so optional keys of a Struct with many required fields are never generated at the default. Found by a coverage test in M1 Part B.
+- **Decode a fixed document for each Schema, with unknown fields rejected.** A property over a derived generator follows the Schema, so it cannot see a field that a mutant removed. One document that uses every tag does.
 
 ## Invariants
 

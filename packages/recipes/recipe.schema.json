@@ -1,0 +1,728 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Aemeth recipe",
+  "$ref": "#/$defs/Recipe",
+  "$defs": {
+    "RecipeId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
+    "Version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000
+    },
+    "Prose": {
+      "type": "string",
+      "pattern": "\\S",
+      "maxLength": 2000
+    },
+    "StepId": {
+      "type": "string",
+      "pattern": "^[a-z][a-zA-Z0-9]*$",
+      "maxLength": 64
+    },
+    "Name": {
+      "type": "string",
+      "pattern": "^[a-z][a-zA-Z0-9]*$",
+      "maxLength": 64
+    },
+    "ResourceKind": {
+      "type": "string",
+      "pattern": "^[a-z][a-zA-Z0-9]*(?:\\.[a-z][a-zA-Z0-9]*)+$",
+      "maxLength": 64
+    },
+    "DataType": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "Text"
+              ]
+            }
+          },
+          "required": [
+            "_tag"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "Integer"
+              ]
+            }
+          },
+          "required": [
+            "_tag"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "Boolean"
+              ]
+            }
+          },
+          "required": [
+            "_tag"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "Duration"
+              ]
+            }
+          },
+          "required": [
+            "_tag"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "Timestamp"
+              ]
+            }
+          },
+          "required": [
+            "_tag"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "Resource"
+              ]
+            },
+            "kind": {
+              "$ref": "#/$defs/ResourceKind"
+            }
+          },
+          "required": [
+            "_tag",
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "List"
+              ]
+            },
+            "item": {
+              "$ref": "#/$defs/DataType"
+            }
+          },
+          "required": [
+            "_tag",
+            "item"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "Struct"
+              ]
+            },
+            "fields": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^[a-z][a-zA-Z0-9]*$",
+                "maxLength": 64
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/DataType"
+              }
+            }
+          },
+          "required": [
+            "_tag",
+            "fields"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "RecipeInput": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/DataType"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "BlockId": {
+      "type": "string",
+      "pattern": "^[a-z][a-zA-Z0-9]*(?:\\.[a-z][a-zA-Z0-9]*)+$",
+      "maxLength": 64
+    },
+    "LiteralValue": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LiteralValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/LiteralValue"
+          }
+        }
+      ]
+    },
+    "Binding": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "RecipeInput"
+              ]
+            },
+            "name": {
+              "$ref": "#/$defs/Name"
+            }
+          },
+          "required": [
+            "_tag",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "StepOutput"
+              ]
+            },
+            "step": {
+              "$ref": "#/$defs/StepId"
+            },
+            "output": {
+              "$ref": "#/$defs/Name"
+            }
+          },
+          "required": [
+            "_tag",
+            "step",
+            "output"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "OptionalStepOutput"
+              ]
+            },
+            "step": {
+              "$ref": "#/$defs/StepId"
+            },
+            "output": {
+              "$ref": "#/$defs/Name"
+            }
+          },
+          "required": [
+            "_tag",
+            "step",
+            "output"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "ForEachItem"
+              ]
+            }
+          },
+          "required": [
+            "_tag"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "Literal"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/LiteralValue"
+            }
+          },
+          "required": [
+            "_tag",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ForEach": {
+      "type": "object",
+      "properties": {
+        "over": {
+          "$ref": "#/$defs/Binding"
+        },
+        "onItemFailure": {
+          "type": "string",
+          "enum": [
+            "Stop",
+            "Continue"
+          ]
+        }
+      },
+      "required": [
+        "over",
+        "onItemFailure"
+      ],
+      "additionalProperties": false
+    },
+    "Step": {
+      "type": "object",
+      "properties": {
+        "_tag": {
+          "type": "string",
+          "enum": [
+            "Step"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/StepId"
+        },
+        "block": {
+          "$ref": "#/$defs/BlockId"
+        },
+        "version": {
+          "$ref": "#/$defs/Version"
+        },
+        "inputs": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z][a-zA-Z0-9]*$",
+            "maxLength": 64
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/Binding"
+          }
+        },
+        "forEach": {
+          "$ref": "#/$defs/ForEach"
+        }
+      },
+      "required": [
+        "_tag",
+        "id",
+        "block",
+        "version",
+        "inputs"
+      ],
+      "additionalProperties": false
+    },
+    "Outcome": {
+      "type": "string",
+      "enum": [
+        "Succeeded",
+        "Failed",
+        "Approved",
+        "Denied"
+      ]
+    },
+    "EdgeTarget": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "Step"
+              ]
+            },
+            "id": {
+              "$ref": "#/$defs/StepId"
+            }
+          },
+          "required": [
+            "_tag",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "End"
+              ]
+            },
+            "result": {
+              "type": "string",
+              "enum": [
+                "Succeeded"
+              ]
+            }
+          },
+          "required": [
+            "_tag",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "_tag": {
+              "type": "string",
+              "enum": [
+                "End"
+              ]
+            },
+            "result": {
+              "type": "string",
+              "enum": [
+                "Failed"
+              ]
+            },
+            "undo": {
+              "type": "string",
+              "enum": [
+                "Run",
+                "Skip"
+              ]
+            }
+          },
+          "required": [
+            "_tag",
+            "result",
+            "undo"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Edge": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/StepId"
+        },
+        "on": {
+          "$ref": "#/$defs/Outcome"
+        },
+        "to": {
+          "$ref": "#/$defs/EdgeTarget"
+        }
+      },
+      "required": [
+        "from",
+        "on",
+        "to"
+      ],
+      "additionalProperties": false
+    },
+    "InvariantRef": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "rule": {
+              "type": "string",
+              "enum": [
+                "NeverWritten"
+              ]
+            },
+            "input": {
+              "$ref": "#/$defs/Name"
+            }
+          },
+          "required": [
+            "rule",
+            "input"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "rule": {
+              "type": "string",
+              "enum": [
+                "CleanedUp"
+              ]
+            },
+            "step": {
+              "$ref": "#/$defs/StepId"
+            },
+            "output": {
+              "$ref": "#/$defs/Name"
+            }
+          },
+          "required": [
+            "rule",
+            "step",
+            "output"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "rule": {
+              "type": "string",
+              "enum": [
+                "RequiredForSuccess"
+              ]
+            },
+            "step": {
+              "$ref": "#/$defs/StepId"
+            }
+          },
+          "required": [
+            "rule",
+            "step"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "rule": {
+              "type": "string",
+              "enum": [
+                "NoWriteBeforeApproval"
+              ]
+            },
+            "input": {
+              "$ref": "#/$defs/Name"
+            }
+          },
+          "required": [
+            "rule",
+            "input"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "rule": {
+              "type": "string",
+              "enum": [
+                "AfterFailure"
+              ]
+            },
+            "step": {
+              "$ref": "#/$defs/StepId"
+            },
+            "then": {
+              "$ref": "#/$defs/StepId"
+            }
+          },
+          "required": [
+            "rule",
+            "step",
+            "then"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "rule": {
+              "type": "string",
+              "enum": [
+                "DestroysOnlyApproved"
+              ]
+            },
+            "gate": {
+              "$ref": "#/$defs/StepId"
+            }
+          },
+          "required": [
+            "rule",
+            "gate"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "rule": {
+              "type": "string",
+              "enum": [
+                "OnlyAfter"
+              ]
+            },
+            "step": {
+              "$ref": "#/$defs/StepId"
+            },
+            "requires": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/StepId"
+                }
+              ],
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/StepId"
+              }
+            }
+          },
+          "required": [
+            "rule",
+            "step",
+            "requires"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Recipe": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "format": {
+          "type": "number",
+          "enum": [
+            1
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/RecipeId"
+        },
+        "version": {
+          "$ref": "#/$defs/Version"
+        },
+        "title": {
+          "$ref": "#/$defs/Prose"
+        },
+        "description": {
+          "$ref": "#/$defs/Prose"
+        },
+        "start": {
+          "$ref": "#/$defs/StepId"
+        },
+        "inputs": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z][a-zA-Z0-9]*$",
+            "maxLength": 64
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/RecipeInput"
+          }
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Step"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Edge"
+          }
+        },
+        "finally": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StepId"
+          }
+        },
+        "invariants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InvariantRef"
+          }
+        }
+      },
+      "required": [
+        "format",
+        "id",
+        "version",
+        "title",
+        "description",
+        "start",
+        "inputs",
+        "nodes",
+        "edges",
+        "finally",
+        "invariants"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

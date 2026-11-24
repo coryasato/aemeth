@@ -56,10 +56,21 @@ Verified on 2026-11-23 and re-checked in M1 Part A the same day, with no change.
 - Oxlint 1.94.0 has `require-unicode-regexp`.
 - `ajv` 8.20.0 was used in the scratch project only, to check the generated JSON Schema. It is not a dependency.
 
+## Verified in M1 Part B (2026-11-23)
+
+- The generator derived from a Schema gives a Struct at most `size` properties, so a Struct with that many required fields never gets its optional keys. Pass a larger `size` to `it.prop` (`{ arbitrary: { runs, size } }`).
+- A derived generator supports `isPattern`, so branded ids with patterns need no hand-written generator.
+- `Schema.Finite` admits `-0`, which JSON text writes as `0`.
+- `Schema.Record` with a branded, pattern-checked key rejects other keys under `onExcessProperty: "error"`, and becomes `propertyNames` in the JSON Schema.
+- `Schema.decodeResult` is what `@effect/tsgo` asks for (`preferTypedSchemaDecoder`) when the input already has the Schema's `Encoded` type.
+- `@types/bun` 1.4.5 is now also a dev dependency of `packages/recipes`, for its `generate` script.
+
 ## Not yet verified
 
 - What Cloudflare currently offers for point-in-time recovery of SQLite-backed Durable Objects, before M2.
 - PlanetScale Postgres branching, before the Postgres variant of recipe 4.
+- D1's point-in-time restore to a bookmark, which recipe 4's revert step assumes, before M7.
+- That a D1 export is one consistent snapshot whose row count and checksum can be taken with it, which recipe 1's check assumes, before M2.
 
 ## Documentation sources
 

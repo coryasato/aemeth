@@ -18,6 +18,9 @@ export default defineConfig({
     "require-yield": "off",
     // `instanceof` is how tagged error classes are narrowed.
     "@nkzw/no-instanceof": "off",
+    // `Schema.isPattern` reaches the generated JSON Schema only if the RegExp has the `u` flag;
+    // without it the constraint is silently dropped (M1 Part A findings).
+    "require-unicode-regexp": "error",
   },
   overrides: [
     {
