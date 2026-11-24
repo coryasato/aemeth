@@ -18,8 +18,9 @@ Most code in this repository is written by coding agents, so correctness has to 
 | Import boundary | A check that `packages/core` imports no other workspace package | `packages/core` |
 | Git hooks | lefthook | Lint, format, types on commit |
 | CI | GitHub Actions | All of the above on every push |
+| Engine decisions | `decide` played against scripted outcomes over generated recipes, each log checked by `transition` and against the validator's paths (from M2 Part B) | `packages/core` |
 | Integration | A temporary Alchemy stack per pull request, destroyed afterwards | `apps/engine`, `infra` |
-| Tracing | Effect tracing exported over OTLP, one span per run step | `apps/engine` |
+| Tracing | Effect spans recorded in Cloudflare's trace of each invocation, which Cloudflare can export over OTLP; one span per execution of a step, checked by a test with an in-memory tracer | `apps/engine` |
 
 ## Property tests
 
@@ -97,4 +98,4 @@ Every tool above that M0 sets up works with the current stack, and none was repl
 - **Test helpers are not mutated.** `packages/core/src/testing/` is left out of Stryker's `mutate` globs (M1 Part C). A full run on `packages/core` took five to seven minutes at the end of M1 Part C and takes nine to eleven since Part D; CI allows the whole job twenty.
 - **A brand name is invisible at runtime,** so Stryker's mutant of `Schema.brand("X")` cannot be killed. Mark it with `// Stryker disable next-line StringLiteral` and a reason; never raise `ignoreStatic` to hide it, since Schemas are static code.
 
-Story and Scene tests, per-PR integration stacks and tracing arrive with M2 and M3. Items still to verify are under "Not yet verified" in [versions.md](versions.md).
+Story and Scene tests, per-PR integration stacks and tracing arrive with M2 and M3. How M2 builds its rails is in [milestones/m2.md](milestones/m2.md). Items still to verify are under "Not yet verified" in [versions.md](versions.md).

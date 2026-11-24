@@ -1,6 +1,6 @@
 # Versions
 
-Verified on 2026-11-23 and re-checked in M1 Part A the same day, with no change. M1 changed no version. The tooling rows, Foldkit and its Vite plugin were also installed and run in M0 Part A. Use the latest release that satisfies every constraint here, pin exact versions, and update this file when anything changes.
+Verified on 2026-11-23 and re-checked in M1 Part A the same day and in M2 Part A on 2026-11-24, with no change. M1 changed no version. The tooling rows, Foldkit and its Vite plugin were also installed and run in M0 Part A. Use the latest release that satisfies every constraint here, pin exact versions, and update this file when anything changes.
 
 ## Verified
 
@@ -8,10 +8,12 @@ Verified on 2026-11-23 and re-checked in M1 Part A the same day, with no change.
 |---|---|---|
 | `effect` | 4.1.5 | Stable since 4.0.0 on 2026-10-01 |
 | `alchemy` | 2.0.0-beta.87 | Beta, breaking changes expected. Peer: `effect ^4.1.4` |
+| `@alchemy.run/cloudflare` | 2.0.0-beta.87 | Alchemy's Cloudflare provider, a separate package. Peers: `alchemy` at the same version, `effect ^4.1.4`, `@effect/platform-bun`, `@effect/platform-node`, `vite ^7 \|\| ^8`. Not installed in the repository until M2 Part C |
+| `@distilled.cloud/cloudflare` | 1.0.0-rc.20 | An Effect client for the Cloudflare REST API, a dependency of the provider. Candidate for the D1 blocks; not yet run in a Worker |
 | `foldkit` | 0.171.0 | npm release matches the main branch. Peer: `effect ~4.1.0` |
 | `@foldkit/vite-plugin` | 0.29.1 | Peer: `vite ^8` |
 | `@foldkit/ui`, `@foldkit/devtools` | 0.171.0 line | Headless components; time-travel overlay |
-| `@effect/platform-cloudflare` | 4.1.5 | Experimental: may break in patch releases |
+| `@effect/platform-cloudflare` | 4.1.5 | Experimental: may break in patch releases. Optional peer: `@alchemy.run/cloudflare >=2.0.0-beta.85 <3` |
 | `@effect/sql-d1`, `@effect/sql-sqlite-do`, `@effect/sql-pg` | 4.1.5 | |
 | `@effect/vitest` | 4.1.5 | Requires Vitest 5 |
 | `@effect/tsgo` | 0.73.4 | Replaces the Effect language service on TypeScript 7. Run as `effect-tsgo tsc` |
@@ -35,6 +37,8 @@ Verified on 2026-11-23 and re-checked in M1 Part A the same day, with no change.
 - **Alchemy does not run inside a Worker.** Its plan and apply functions need Node or Bun.
 - **`@effect/tsgo` sets the ceiling for Oxlint and tsrs.** Check its "Supported Package Versions" table before moving either.
 - **Vitest and Stryker run on Node.** `bun --bun vitest` fails to start its workers. Node 22.18 or later is required (the Oxlint preset loads `oxlint.config.ts` with Node); Node 26 is used.
+- **`alchemy` and `@alchemy.run/cloudflare` move together,** at the same exact version, inside the range `@effect/platform-cloudflare` accepts.
+- **Alchemy's Cloudflare login is its own.** A profile in `~/.alchemy`, or `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` under `CI=true`. Wrangler's login is not used.
 - **TypeScript 7 has no JS API.** Tools that call it (Stryker's tsconfig rewrite, `@stryker-mutator/typescript-checker`) need a workaround or are not used.
 
 ## Verified in M0 Part A (2026-11-23)
@@ -80,12 +84,28 @@ Verified on 2026-11-23 and re-checked in M1 Part A the same day, with no change.
 - `Result.map`, `Result.mapError` and `Result.flatMap` are used as documented in 4.1.5.
 - `it.prop` stops shrinking after 100 candidates by default (`maxShrinks`), and on a fixed-length array it changes one number at a time.
 
+## Verified in M2 Part A (2026-11-24)
+
+Details and what was run are in [milestones/m2.md](milestones/m2.md).
+
+- `effect/workflow` on `CloudflareWorkflowEngine` holds a run at a gate across deploys and restarts a run killed mid-step, deployed with Wrangler and with Alchemy (`AlchemyCloudflareCluster`). The same workflow runs on `WorkflowEngine.layerMemory`.
+- A workflow cannot use its Durable Object's SQLite; an entity can, through `CloudflareCluster.DurableObjectSqlClient`.
+- A deploy leaves a busy Durable Object on its old code for up to 300 seconds by default. `code_update_strategy` (`codeUpdateStrategy` in Alchemy) can make it immediate.
+- SQLite-backed Durable Objects have point-in-time recovery for 30 days, from inside the object only. Nothing exports an object's storage from outside.
+- A D1 export is taken at one bookmark while the database is unavailable to queries. It returns no row count and no checksum, and D1 SQL has no hash function, so both are computed by the caller.
+- A D1 database has a name and no tags. A 75-character name was accepted.
+- An R2 `put` from the Worker binding with `onlyIf: new Headers({ "If-None-Match": "*" })` writes an object once.
+- Alchemy's binding clients need a `RuntimeContext`, which a workflow's layer does not have; reading it at init with `Effect.serviceOption` and providing it works.
+- `wrangler` 4.168.0 was used in the scratch projects only. It is not a dependency.
+
 ## Not yet verified
 
-- What Cloudflare currently offers for point-in-time recovery of SQLite-backed Durable Objects, before M2.
 - PlanetScale Postgres branching, before the Postgres variant of recipe 4.
-- D1's point-in-time restore to a bookmark, which recipe 4's revert step assumes, before M7.
-- That a D1 export is one consistent snapshot whose row count and checksum can be taken with it, which recipe 1's check assumes, before M2.
+- D1's point-in-time restore to a bookmark, which recipe 4's revert step assumes, before M7. Read in M2 Part A: it restores in place through REST or Wrangler, for 30 days on Workers Paid.
+- Cloudflare Access in front of the Worker through Alchemy's `access` prop, in M2 Part C. The first tries failed on the account's permissions, not on the feature.
+- `@distilled.cloud/cloudflare` and the D1 REST calls from inside a Worker, in M2 Part D.
+- `Cloudflare.Telemetry()` and a span per step in Cloudflare's traces, in M2 Part C.
+- `@alchemy.run/test` with Vitest 5, and the Worker bundle built from workspace packages, in M2 Part C.
 
 ## Documentation sources
 
@@ -93,4 +113,6 @@ Verified on 2026-11-23 and re-checked in M1 Part A the same day, with no change.
 - Alchemy: https://alchemy.run and https://alchemy.run/llms.txt
 - Foldkit: https://foldkit.dev/llms.txt, https://foldkit.dev/llms-full.txt, https://github.com/foldkit/foldkit
 - Cloudflare Artifacts: https://developers.cloudflare.com/artifacts/
+- Cloudflare Workers, Durable Objects, D1 and R2: https://developers.cloudflare.com/llms.txt
+- `@effect/platform-cloudflare`: its `README.md` and `src/` in `node_modules`, which are ahead of the website
 - Oxlint type-aware linting: https://oxc.rs/docs/guide/usage/linter/type-aware.html

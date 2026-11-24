@@ -4,7 +4,7 @@ Date: 2026-11-23. Status: accepted.
 
 ## Decision
 
-- **Run events** live in the run's Durable Object, in SQLite. The event log is append-only and is the source of truth for a run.
+- **Run events** live in the run's log entity, a Durable Object of its own beside the workflow's, in SQLite. The event log is append-only and is the source of truth for a run. *(Until M2 Part A this said "the run's Durable Object"; a workflow cannot use its own object's storage, see [0003](0003-orchestration.md).)*
 - **The index** of recipes, recipe versions and runs lives in D1.
 - **The archive** of finished runs lives in R2. When a run reaches a final state, its full event log is written to R2 as one immutable object.
 - **Aemeth itself does not use Postgres.**
@@ -13,7 +13,7 @@ Date: 2026-11-23. Status: accepted.
 
 The event log is the audit trail and the most valuable data Aemeth holds, and a Durable Object per run is not a backup. The archive gives finished runs a durable copy outside the object that produced them, lets runs be queried and replayed without waking their objects, and gives the restore drill something meaningful to verify: an archived log, replayed through `transition`, must reach the final state the index records.
 
-Runs still in flight exist only in their Durable Object. What Cloudflare offers for recovering that storage is to be confirmed (see [../versions.md](../versions.md)).
+Runs still in flight exist only in their Durable Objects. Cloudflare keeps 30 days of point-in-time recovery for that storage, usable only from inside the object, and nothing exports it from outside (confirmed in M2 Part A, see [../versions.md](../versions.md)).
 
 ## Targets are separate from Aemeth's own data
 
