@@ -40,4 +40,4 @@ Dependencies point one way: `apps/*` and `packages/blocks` depend on `packages/c
 
 ## Status
 
-Planning is complete. M0 Parts A (research and spec) and B (workspace and local rails) are done. The next step is M0 Part C in [docs/milestones/m0.md](docs/milestones/m0.md).
+M0 (workspace and rails) closed on 2026-11-23: every rail runs locally, on commit and in CI. M1 (core) is open; the next step is its Part A, research and spec. Progress is in [docs/plan.md](docs/plan.md#status).

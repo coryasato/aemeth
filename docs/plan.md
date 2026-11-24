@@ -8,8 +8,8 @@ Milestones are named M0, M1, … and worked in parts, one session each, starting
 
 | Milestone | Title | Status |
 |---|---|---|
-| M0 | Workspace and rails | Active: Part C, waiting on owner checks ([below](#active-milestone-m0-workspace-and-rails)) |
-| M1 | Core | Not started |
+| M0 | Workspace and rails | Done 2026-11-23 ([spec](milestones/m0.md)) |
+| M1 | Core | Active: Part A next ([below](#active-milestone-m1-core)) |
 | M2 | Engine and the restore drill | Not started |
 | Design | The UI design session | Not started |
 | M3 | Run UI | Not started |
@@ -20,35 +20,26 @@ Milestones are named M0, M1, … and worked in parts, one session each, starting
 | M8 | Recipe 5: secret rotation | Not started |
 | M9 | Recipe 6: Artifacts pipeline | Not started |
 
-## Active milestone: M0, workspace and rails
+## Active milestone: M1, core
 
-Opened 2026-11-23 and planned in three parts, one session each. Acceptance criteria are under [M0](#m0-workspace-and-rails) below. Research findings, the spec's decisions and step-by-step instructions for each group are in [milestones/m0.md](milestones/m0.md).
+Opened 2026-11-23. Part A comes first; it sets the number of later parts. Acceptance criteria are under [M1](#m1-core) below. The spec will be [milestones/m1.md](milestones/m1.md), written in Part A.
 
-**Why:** most code here is written by coding agents, so the rails that check it must exist before any feature work ([quality-rails.md](quality-rails.md)).
+**Why:** the engine, the UI and the builder all depend on the recipe and run model, so it is built first, as pure code with nothing to deploy ([decision 0002](decisions/0002-recipe-is-a-graph.md), [decision 0007](decisions/0007-tooling.md)).
 
-**What it sets up:** a Bun workspace with one placeholder module and test per package; type checking with Effect diagnostics, type-aware linting, formatting, tests, property tests, knip and the core import boundary, each as one command and all as `bun run check`; mutation testing on `packages/core`; lefthook on commit; a Claude Code hook on the invariants folder; CI on every push.
+**What it sets up:** block and recipe Schemas, the recipe validator over the six recipes in [recipes.md](recipes.md), the run `transition` function with property tests, and the first invariants in `packages/core/src/invariants/`. The full list is the acceptance criteria.
 
-**Left out:** Foldkit, Alchemy and Cloudflare dependencies, and the rails that need them (Story and Scene tests, per-PR integration stacks, tracing). They arrive with M2 and M3 (spec decision 2).
+**Left out:** any infrastructure, the engine and the UI (M2 onward). Mutation testing must meet `break: 80` from M0.
 
 **Split into parts,** one session each:
 
-- **Part A: research and spec.** Versions checked, every unverified tool run in a scratch project, the spec written. Closes A1 to A3. Done.
-- **Part B: workspace and core rails, local.** Closes B1 to B4. Nothing pushed. Done.
-- **Part C: mutation, hooks, CI, and the close.** Closes C1 to C4. C1 and C2 done; C3 and C4 wait on the first CI run. *The owner pushes, and sets the mutation `break` threshold (spec decision 6).*
+- **Part A: research and spec.** Effect Schema, JSON Schema generation and `@effect/vitest` property APIs checked against current documentation; unknowns run in the scratchpad; [milestones/m1.md](milestones/m1.md) written with its decisions and the later parts. Closes A1 to A3. *The owner reviews the spec's decisions, and writes or approves the first invariants.*
+- **Later parts:** set by Part A.
 
 **Done when:**
 
-- [x] **A1. Versions are current and consistent:** each tool's latest release checked on npm, held back where a peer requires it, and recorded in [versions.md](versions.md). *2026-11-23: Oxlint held at 1.94.0 and tsrs at `tsrs4`, the most `@effect/tsgo` 0.73.4 supports.*
-- [x] **A2. Every M0 unknown is run, not assumed:** Effect's `Arbitrary`, Stryker, knip and lefthook with Vitest 5 and TypeScript 7, the Foldkit Vite plugin under Bun, and the Oxlint preset trial on Effect code. *2026-11-23: all run under Bun 1.4.4 and Node 26.12.1. Stryker needs a `tsconfigFile` workaround (TypeScript 7 has no JS API); Vitest must run on Node; the preset needed 3 overrides and is adopted. Details in the spec's findings.*
-- [x] **A3. The spec is written:** [milestones/m0.md](milestones/m0.md) with findings, eight decisions and the groups below; [quality-rails.md](quality-rails.md) updated with the trial result.
-- [x] **B1. The workspace installs:** `bun install` succeeds with exact pins that satisfy [versions.md](versions.md); every package has a `tsconfig.json`, a placeholder module and one test; `packages/core/src/invariants/README.md` exists for the owner to review. *2026-11-23: npm latest re-checked, all pins unchanged. `bun install` and `bun install --frozen-lockfile` succeed; `bun.lock` written (Bun's isolated linker, so each package resolves only its own dependencies). Five packages with `package.json`, `tsconfig.json`, `src/index.ts` and `src/index.test.ts`; `infra` has no dependencies yet. The invariants README already existed from planning and was left unchanged: owner to review.*
-- [x] **B2. Types, lint and format each run with one command and pass,** and each fails on a planted violation (a floating Effect, an `any`, a misformatted file). *2026-11-23: `bun run typecheck`, `lint` and `format:check` exit 0. Plants: a floating `Effect.log` in a source file and in a test file, error `floatingEffect`, exit 2; `@effect/vitest` imported in a non-test file, warning `unstableApiUsage`, exit 2; an `any` and a floating promise, `no-explicit-any`, `no-unsafe-*` and `no-floating-promises`, exit 1; a misformatted file, exit 1. Differs from the spec: `@effect/tsgo` override paths resolve from the root `tsconfig.base.json`, so they are `**/*.ts` (the default `src/**/*.ts` matched nothing); `unstableApiUsage` stays on and test files get `allowedUnstableApis: ["@effect/vitest"]`; Oxfmt skips `*.md` so planning docs keep their hand formatting.*
-- [x] **B3. Tests, knip and the import boundary each run with one command and pass:** `packages/core` has an `it.prop` test over a Schema; a planted `@aemeth/blocks` import and a `../../` import in core each fail the build. *2026-11-23: `bun run test` 6 files, 7 tests pass; `bun run knip` exits 0. A false property over `StepId` failed with a shrunk counterexample. knip plants: an unused file, an unused export and an unused dependency each exit 1; removing `ignoreDependencies` reports `@effect/language-service`, so it stays. Boundary plants, each pointing at a real file: `@aemeth/blocks`, `../../blocks/src/index` and `../../../apps/web/src/index` imported from `packages/core/src/`, and `../blocks/src/index` from a file at the top of `packages/core`, all `no-restricted-imports`, exit 1. In core's `package.json`, `@aemeth/blocks: workspace:*` (also under `optionalDependencies`), `blocks: link:../blocks` and `web: file:../../apps/web` each fail `src/boundary.test.ts`. Rechecked after the code review the same day. Differs from the spec: the `package.json` half of decision 4 is a core test that decodes the manifest with a Schema, not a separate script.*
-- [x] **B4. `bun run check` runs every rail above in order** and fails on the first failure. The commands are listed for C4. *2026-11-23: `bun run check` runs typecheck, lint, format:check, test and knip, and exits 0. With a planted type error it stopped after typecheck, exit 2. Commands for C4: `typecheck`, `lint`, `format`, `format:check`, `test`, `knip`, `check` in the root `package.json`.*
-- [x] **C1. Mutation testing runs on `packages/core`:** `bun run mutate` passes, its `break` threshold is a number in config that M1 must meet, and dropping below it fails the run. *2026-11-23: Stryker and lefthook still latest on npm, pinned and installed. `bun run mutate` scores 100 (2 of 2 mutants killed, 1 marked equivalent), exit 0. Thresholds `high: 90`, `low: 80`, `break: 80` in `packages/core/stryker.config.json`; the owner kept `break: 80` on 2026-11-23 (decision 6). Plants: the first run scored 66.67, under `break`, exit 1; with the `describeStep` test skipped it scored 0, exit 1. Differs from the spec: it runs from the repository root, because the sandbox breaks the relative tsconfig `extends` (Part A's open question); it needs an explicit `plugins` entry under Bun's isolated linker; the `Schema.brand` mutant is equivalent and marked. Details under "What Part C changed" in the spec.*
-- [x] **C2. Hooks are in place:** lefthook runs lint, format check and typecheck on commit; editing under `packages/core/src/invariants/` asks for approval through `.claude/settings.json`. Both shown working. *2026-11-23. lefthook: `lefthook.yml` with typecheck, lint and format check in parallel on pre-commit, installed by `prepare` on `bun install`; `bunx lefthook run pre-commit --all-files` passes, and with a file carrying an `any`, a floating Effect and bad formatting all three jobs fail (`no-explicit-any`, `floatingEffect`, format), exit 1. Claude Code hook: `.claude/hooks/guard-invariants.ts` via `PreToolUse` on Edit, MultiEdit, Write, NotebookEdit and Bash. Run by hand, it returns `permissionDecision: "ask"` for an Edit and a Bash `sed -i` under the folder, nothing for a file elsewhere, and "ask" for unreadable input. The session that created the hook did not load it (hooks load at session start); in a new session the owner attempted an edit under the folder and was asked for approval.*
-- [ ] **C3. CI runs the same checks on every push,** and its first run passes. *2026-11-23: `.github/workflows/ci.yml` written: on push, checkout v7.0.1, setup-bun v2.2.0 (Bun 1.4.4), setup-node v7.1.0 (Node 26.12.1), `bun install --frozen-lockfile`, `bun run check`, `bun run mutate`. The frozen install passes locally. Open: the owner pushes and confirms the first run passes.*
-- [ ] **C4. The milestone closes:** `CLAUDE.md` lists the commands; every acceptance criterion under M0 has its evidence here; this section moves to [milestones/m0.md](milestones/m0.md) and M1 opens. *2026-11-23: `CLAUDE.md` "Running the checks" filled in; [quality-rails.md](quality-rails.md) and [versions.md](versions.md) updated. `bun run check` exits 0 with every Part C change in place (6 test files, 7 tests). Open: the close itself, after C2 and C3.*
+- [ ] **A1. Versions are current:** each M1 library's latest release checked and recorded in [versions.md](versions.md).
+- [ ] **A2. Every M1 unknown is run, not assumed:** including JSON Schema generation from an Effect Schema and property tests over generated recipe graphs.
+- [ ] **A3. The spec is written:** [milestones/m1.md](milestones/m1.md) with findings, decisions flagged for the owner, and the later parts with their groups added here.
 
 ## M0: workspace and rails
 
