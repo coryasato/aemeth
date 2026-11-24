@@ -40,4 +40,4 @@ Dependencies point one way: `apps/*` and `packages/blocks` depend on `packages/c
 
 ## Status
 
-Planning is complete. M0 Part A (research and spec) is done. The next step is M0 Part B in [docs/milestones/m0.md](docs/milestones/m0.md).
+Planning is complete. M0 Parts A (research and spec) and B (workspace and local rails) are done. The next step is M0 Part C in [docs/milestones/m0.md](docs/milestones/m0.md).

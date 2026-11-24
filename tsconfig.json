@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/blocks" },
+    { "path": "apps/engine" },
+    { "path": "apps/web" },
+    { "path": "infra" }
+  ]
+}
