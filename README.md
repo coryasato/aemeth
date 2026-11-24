@@ -41,4 +41,4 @@ Dependencies point one way: `apps/*`, `packages/blocks` and `packages/recipes` d
 
 ## Status
 
-M0 (workspace and rails) closed on 2026-11-23: every rail runs locally, on commit and in CI. M1 (core) is open: the block and recipe Schemas, the block declarations and the six recipe files are written, and the next step is Part C, the validator. Progress is in [docs/plan.md](docs/plan.md#status).
+M0 (workspace and rails) closed on 2026-11-23: every rail runs locally, on commit and in CI. M1 (core) is open: the Schemas, the block declarations, the six recipe files and the validator are written. The validator checks structure, size, cycles and types, walks every path, and runs nine invariants on each; all six recipes pass it. The next step is Part D, run events and the `transition` function. Progress is in [docs/plan.md](docs/plan.md#status).

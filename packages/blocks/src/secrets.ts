@@ -2,6 +2,8 @@ import type { Declaration } from "./declare";
 import {
   creates,
   destroys,
+  fromInput,
+  fromOutput,
   noUndo,
   nothingToUndo,
   reads,
@@ -25,7 +27,7 @@ export const secrets: ReadonlyArray<Declaration> = [
     inputs: { issuer: required(issuer) },
     outputs: { credential },
     effects: [reads("issuer"), creates("credential", "Durable")],
-    undo: undoWith("secrets.revokeCredential", 1),
+    undo: undoWith("secrets.revokeCredential", 1, { credential: fromOutput("credential") }),
     rerun,
   },
   {
@@ -40,7 +42,10 @@ export const secrets: ReadonlyArray<Declaration> = [
     },
     outputs: {},
     effects: [writes("consumer"), reads("credential"), reads("previous")],
-    undo: undoWith("secrets.restoreCredential", 1),
+    undo: undoWith("secrets.restoreCredential", 1, {
+      consumer: fromInput("consumer"),
+      previous: fromInput("previous"),
+    }),
     rerun,
   },
   {

@@ -27,7 +27,7 @@ export const d1: ReadonlyArray<Declaration> = [
     // The row count and checksum describe the exported state, so a later check does not depend
     // on what the source database has become since.
     outputs: { export: exported, rowCount: integer, checksum: text },
-    effects: [reads("database"), creates("export", "Temporary")],
+    effects: [reads("database"), creates("export", "Expiring")],
     undo: noUndo("The export is a download that expires by itself. There is nothing to delete."),
     rerun,
   },

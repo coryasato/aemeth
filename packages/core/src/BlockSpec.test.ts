@@ -35,14 +35,23 @@ const createCopy = {
       },
     },
   },
-  outputs: { copy: database },
+  outputs: { copy: database, link: { _tag: "Text" } },
   effects: [
     { _tag: "Reads", input: "source" },
     { _tag: "Writes", input: "source" },
     { _tag: "Creates", output: "copy", lifetime: "Temporary" },
+    { _tag: "Creates", output: "link", lifetime: "Expiring" },
     { _tag: "Destroys", input: "old" },
   ],
-  undo: { _tag: "Undo", block: "d1.destroyDatabase", version: 2 },
+  undo: {
+    _tag: "Undo",
+    block: "d1.destroyDatabase",
+    version: 2,
+    inputs: {
+      database: { _tag: "FromOutput", name: "copy" },
+      label: { _tag: "FromInput", name: "label" },
+    },
+  },
   rerun: "SafeWithIdempotencyKey",
 };
 
@@ -101,7 +110,38 @@ describe("BlockSpec", () => {
     ],
     ["an unknown undo", { ...check, undo: { _tag: "Maybe" } }],
     ["an undo with no reason", { ...destroy, undo: { _tag: "NoUndo", reason: "" } }],
-    ["an undo block with no version", { ...destroy, undo: { _tag: "Undo", block: "d1.restore" } }],
+    [
+      "an undo block with no version",
+      { ...destroy, undo: { _tag: "Undo", block: "d1.restore", inputs: {} } },
+    ],
+    [
+      "an undo block that does not say how it is fed",
+      { ...destroy, undo: { _tag: "Undo", block: "d1.restore", version: 1 } },
+    ],
+    [
+      "an undo input fed from something other than an input or an output",
+      {
+        ...destroy,
+        undo: {
+          _tag: "Undo",
+          block: "d1.restore",
+          version: 1,
+          inputs: { database: { _tag: "FromRecipe", name: "database" } },
+        },
+      },
+    ],
+    [
+      "an undo input name that is not camel case",
+      {
+        ...destroy,
+        undo: {
+          _tag: "Undo",
+          block: "d1.restore",
+          version: 1,
+          inputs: { "The DB": { _tag: "FromInput", name: "database" } },
+        },
+      },
+    ],
     ["a bad id", { ...check, id: "check" }],
     ["version 0", { ...check, version: 0 }],
     ["an empty title", { ...check, title: "" }],
@@ -154,6 +194,38 @@ describe("blockSpecProblems", () => {
   ])("reports a gate with a $_tag effect", (effect) => {
     const spec = { ...destroy, kind: "Gate", effects: [effect] };
     expect(problems(spec)).toEqual([{ _tag: "GateChanges", effect }]);
+  });
+
+  it("reports an undo fed from an input or an output the block does not declare", () => {
+    const undo = {
+      _tag: "Undo",
+      block: "d1.restore",
+      version: 1,
+      inputs: {
+        database: { _tag: "FromInput", name: "database" },
+        receipt: { _tag: "FromOutput", name: "receipt" },
+        // Each name exists, but on the other side: `receipt` is an output, `database` an input.
+        wrongSide: { _tag: "FromInput", name: "receipt" },
+        otherSide: { _tag: "FromOutput", name: "database" },
+        inherited: { _tag: "FromInput", name: "toString" },
+        alsoInherited: { _tag: "FromOutput", name: "valueOf" },
+      },
+    };
+    expect(problems({ ...destroy, undo })).toEqual([
+      { _tag: "UndoFedFromUnknownInput", undoInput: "wrongSide", input: "receipt" },
+      { _tag: "UndoFedFromUnknownOutput", undoInput: "otherSide", output: "database" },
+      { _tag: "UndoFedFromUnknownInput", undoInput: "inherited", input: "toString" },
+      { _tag: "UndoFedFromUnknownOutput", undoInput: "alsoInherited", output: "valueOf" },
+    ]);
+  });
+
+  it("reports a gate that declares an undo block, and not one that says it cannot be undone", () => {
+    const undo = { _tag: "Undo", block: "d1.restore", version: 1, inputs: {} };
+    expect(problems({ ...gate, undo })).toEqual([{ _tag: "GateHasUndo" }]);
+    expect(
+      problems({ ...gate, undo: { _tag: "NoUndo", reason: "Nothing to take back." } }),
+    ).toEqual([]);
+    expect(problems({ ...check, undo })).toEqual([]);
   });
 
   it("lets a gate read what it shows", () => {

@@ -1,6 +1,7 @@
 import type { Declaration } from "./declare";
 import {
   duration,
+  fromInput,
   integer,
   noUndo,
   nothingToUndo,
@@ -41,7 +42,10 @@ export const workers: ReadonlyArray<Declaration> = [
     },
     outputs: {},
     effects: [writes("worker"), reads("candidate"), reads("previous")],
-    undo: undoWith("workers.rollBack", 1),
+    undo: undoWith("workers.rollBack", 1, {
+      worker: fromInput("worker"),
+      previous: fromInput("previous"),
+    }),
     rerun,
   },
   {

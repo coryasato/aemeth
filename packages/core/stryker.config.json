@@ -3,7 +3,11 @@
   "testRunner": "vitest",
   "plugins": ["@stryker-mutator/vitest-runner"],
   "vitest": { "dir": "packages/core" },
-  "mutate": ["packages/core/src/**/*.ts", "!packages/core/src/**/*.test.ts"],
+  "mutate": [
+    "packages/core/src/**/*.ts",
+    "!packages/core/src/**/*.test.ts",
+    "!packages/core/src/testing/**"
+  ],
   "tsconfigFile": "stryker-skips-tsconfig-rewrite.json",
   "thresholds": { "high": 90, "low": 80, "break": 80 },
   "reporters": ["clear-text", "progress", "html"],

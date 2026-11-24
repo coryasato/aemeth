@@ -31,6 +31,14 @@ Found in M1 Part A ([milestones/m1.md](milestones/m1.md)):
 - **Give a large Struct a larger `size`.** The derived generator gives a Struct at most `size` properties, so optional keys of a Struct with many required fields are never generated at the default. Found by a coverage test in M1 Part B.
 - **Decode a fixed document for each Schema, with unknown fields rejected.** A property over a derived generator follows the Schema, so it cannot see a field that a mutant removed. One document that uses every tag does.
 
+Found in M1 Part C:
+
+- **Build a fixed-length array with `isMinLength` and `isMaxLength`,** then make every choice from it by index. It does not stall, and the property shrinks towards zeros.
+- **Compare whole values at least once per shape.** A test that compared paths rendered as text missed a stray field that a test comparing the objects found.
+- **Check the property's own oracle on a hand-written case.** The path-shape property first failed because its expectation was wrong, not the code.
+- **A stage's tests look only at that stage,** but fail if an earlier stage rejected the recipe: otherwise "no errors here" passes for a recipe that never got there.
+- **Read the surviving mutants of a rule.** A score above the threshold still hid twelve branches in the invariants that no test told apart.
+
 ## Invariants
 
 - Invariants live in `packages/core/src/invariants/`.
@@ -62,7 +70,7 @@ These were inferred from the rule list on 2026-11-23, then run against Effect-st
 | `typescript/unbound-method` | May fire on class-based services and destructured methods | Adjust if it fires |
 | `quality/no-unknown-returns`, `quality/no-unknown-type-aliases` | Flag explicit `unknown`, which decoders return | Adjust if they fire |
 | `typescript/no-unsafe-type-assertion`, `no-unsafe-*`, `no-explicit-any` | Friction in generic-heavy code | Keep. Fix the code, or disable per line with a reason |
-| `unicorn/consistent-function-scoping` | Style only | Adjust if noisy |
+| `unicorn/consistent-function-scoping` | Style only | Off for `**/*.test.ts` since M1 Part C: it fired on every helper kept inside its `describe`. On elsewhere |
 | `unicorn/prefer-top-level-await` | Style only; Effect programs are run through a runtime | Adjust if noisy |
 | `typescript/array-type` (forces `Array<T>`) | Style only | Keep unless it clashes with generated code |
 | `no-console` | Applies everywhere, including scripts | Keep. Use Effect's logger |
@@ -76,6 +84,7 @@ Every tool above that M0 sets up works with the current stack, and none was repl
 
 - **Stryker:** TypeScript 7 has no JS API, so its tsconfig rewrite is skipped, and it runs from the repository root so relative tsconfig `extends` still resolve. `@stryker-mutator/typescript-checker` is not used. Details in [milestones/m0.md](milestones/m0.md).
 - **Vitest and Stryker run on Node,** not on the Bun runtime.
+- **Test helpers are not mutated.** `packages/core/src/testing/` is left out of Stryker's `mutate` globs (M1 Part C). A full run on `packages/core` takes five to seven minutes.
 - **A brand name is invisible at runtime,** so Stryker's mutant of `Schema.brand("X")` cannot be killed. Mark it with `// Stryker disable next-line StringLiteral` and a reason; never raise `ignoreStatic` to hide it, since Schemas are static code.
 
 Story and Scene tests, per-PR integration stacks and tracing arrive with M2 and M3. Items still to verify are under "Not yet verified" in [versions.md](versions.md).

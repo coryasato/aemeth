@@ -16,11 +16,18 @@ export const optional = (type: Type) => ({ _tag: "Optional", type }) as const;
 export const reads = (input: string) => ({ _tag: "Reads", input }) as const;
 export const writes = (input: string) => ({ _tag: "Writes", input }) as const;
 export const destroys = (input: string) => ({ _tag: "Destroys", input }) as const;
-export const creates = (output: string, lifetime: "Temporary" | "Durable") =>
+export const creates = (output: string, lifetime: "Temporary" | "Expiring" | "Durable") =>
   ({ _tag: "Creates", output, lifetime }) as const;
 
-export const undoWith = (block: string, version: number) =>
-  ({ _tag: "Undo", block, version }) as const;
+export const fromInput = (name: string) => ({ _tag: "FromInput", name }) as const;
+export const fromOutput = (name: string) => ({ _tag: "FromOutput", name }) as const;
+
+/** `inputs` says where each input of the undo block comes from: this block's inputs or outputs. */
+export const undoWith = (
+  block: string,
+  version: number,
+  inputs: Record<string, ReturnType<typeof fromInput | typeof fromOutput>>,
+) => ({ _tag: "Undo", block, version, inputs }) as const;
 export const noUndo = (reason: string) => ({ _tag: "NoUndo", reason }) as const;
 export const nothingToUndo = { _tag: "NothingToUndo" } as const;
 

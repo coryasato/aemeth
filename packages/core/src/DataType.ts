@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { Name, ResourceKind } from "./ids";
+import { Name, namesOf, own, ResourceKind } from "./ids";
 
 /**
  * The type of a value that moves between a recipe's inputs, its steps and their blocks.
@@ -38,3 +38,35 @@ export const DataType = Schema.TaggedUnion({
   List: { item: self },
   Struct: { fields: Schema.Record(Name, self) },
 }).annotate({ identifier: "DataType" });
+
+/** Whether two types are structurally equal. There is no subtyping (M1 decision 8). */
+export const sameType = (a: DataType, b: DataType): boolean => {
+  switch (a._tag) {
+    case "Text":
+    case "Integer":
+    case "Boolean":
+    case "Duration":
+    case "Timestamp": {
+      return b._tag === a._tag;
+    }
+    case "Resource": {
+      return b._tag === "Resource" && b.kind === a.kind;
+    }
+    case "List": {
+      return b._tag === "List" && sameType(a.item, b.item);
+    }
+    case "Struct": {
+      if (b._tag !== "Struct") {
+        return false;
+      }
+      const fields = namesOf(a.fields);
+      return (
+        fields.length === Object.keys(b.fields).length &&
+        fields.every(([name, type]) => {
+          const other = own(b.fields, name);
+          return other !== undefined && sameType(type, other);
+        })
+      );
+    }
+  }
+};

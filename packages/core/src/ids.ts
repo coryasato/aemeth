@@ -69,3 +69,13 @@ export const Prose = Schema.String.pipe(
   Schema.check(Schema.isPattern(/\S/u), Schema.isMaxLength(2000)),
   Schema.annotate({ identifier: "Prose" }),
 );
+
+/** The entries of a record keyed by `Name`, with their keys still typed as names. */
+export const namesOf = <A>(record: { readonly [name: Name]: A }): ReadonlyArray<[Name, A]> =>
+  // `Object.entries` widens keys to `string`; every key of such a record was decoded as a `Name`.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  Object.entries(record) as Array<[Name, A]>;
+
+/** The value a record holds under a name of its own, never an inherited property such as `toString`. */
+export const own = <A>(record: { readonly [name: string]: A }, name: string): A | undefined =>
+  Object.hasOwn(record, name) ? record[name] : undefined;

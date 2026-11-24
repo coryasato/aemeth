@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { DataType } from "./DataType";
-import { BlockId, Name, Prose, Version } from "./ids";
+import { BlockId, Name, namesOf, Prose, Version } from "./ids";
 
 /** What a block is. Its outcomes follow: an action or check succeeds or fails, a gate is approved or denied. */
 export const BlockKind = Schema.Literals(["Action", "Check", "Gate"]).annotate({
@@ -15,8 +15,12 @@ export const BlockInput = Schema.TaggedUnion({
 }).annotate({ identifier: "BlockInput" });
 export type BlockInput = typeof BlockInput.Type;
 
-/** A resource created as `Temporary` is tagged with its run's id and is meant to be destroyed by that run. */
-export const Lifetime = Schema.Literals(["Temporary", "Durable"]).annotate({
+/**
+ * How long a created resource lasts. `Temporary` is tagged with its run's id and must be destroyed
+ * by that run (the always-on `TemporaryCleanedUp` invariant). `Expiring` goes away by itself, such
+ * as a download link, so nothing has to destroy it. `Durable` is meant to stay.
+ */
+export const Lifetime = Schema.Literals(["Temporary", "Expiring", "Durable"]).annotate({
   identifier: "Lifetime",
 });
 export type Lifetime = typeof Lifetime.Type;
@@ -30,13 +34,21 @@ export const BlockEffect = Schema.TaggedUnion({
 }).annotate({ identifier: "BlockEffect" });
 export type BlockEffect = typeof BlockEffect.Type;
 
+/** Where one input of an undo block comes from: an input or an output of the step being undone. */
+export const UndoSource = Schema.TaggedUnion({
+  FromInput: { name: Name },
+  FromOutput: { name: Name },
+}).annotate({ identifier: "UndoSource" });
+export type UndoSource = typeof UndoSource.Type;
+
 /**
- * How a block's work is taken back. `Undo` names a compensating block that is given this step's
- * inputs and outputs. A block that writes and cannot be undone says so with `NoUndo` and a reason.
- * `NothingToUndo` is only for a block that changes nothing.
+ * How a block's work is taken back. `Undo` names a compensating block and says, input by input,
+ * which of this block's inputs or outputs feeds it (M1 decision 21). A block that writes and
+ * cannot be undone says so with `NoUndo` and a reason. `NothingToUndo` is only for a block that
+ * changes nothing.
  */
 export const BlockUndo = Schema.TaggedUnion({
-  Undo: { block: BlockId, version: Version },
+  Undo: { block: BlockId, version: Version, inputs: Schema.Record(Name, UndoSource) },
   NoUndo: { reason: Prose },
   NothingToUndo: {},
 }).annotate({ identifier: "BlockUndo" });
@@ -71,7 +83,10 @@ export type BlockSpecProblem =
       readonly output: Name;
     }
   | { readonly _tag: "NothingToUndoButChanges"; readonly effect: BlockEffect }
-  | { readonly _tag: "GateChanges"; readonly effect: BlockEffect };
+  | { readonly _tag: "GateChanges"; readonly effect: BlockEffect }
+  | { readonly _tag: "GateHasUndo" }
+  | { readonly _tag: "UndoFedFromUnknownInput"; readonly undoInput: Name; readonly input: Name }
+  | { readonly _tag: "UndoFedFromUnknownOutput"; readonly undoInput: Name; readonly output: Name };
 
 const effectProblems = (spec: BlockSpec, effect: BlockEffect): ReadonlyArray<BlockSpecProblem> => {
   const problems: Array<BlockSpecProblem> = [];
@@ -91,11 +106,36 @@ const effectProblems = (spec: BlockSpec, effect: BlockEffect): ReadonlyArray<Blo
   return problems;
 };
 
+const undoProblems = (spec: BlockSpec): ReadonlyArray<BlockSpecProblem> => {
+  if (spec.undo._tag !== "Undo") {
+    return [];
+  }
+  return namesOf(spec.undo.inputs).flatMap(([undoInput, source]): Array<BlockSpecProblem> => {
+    if (source._tag === "FromInput") {
+      return Object.hasOwn(spec.inputs, source.name)
+        ? []
+        : [{ _tag: "UndoFedFromUnknownInput", undoInput, input: source.name }];
+    }
+    return Object.hasOwn(spec.outputs, source.name)
+      ? []
+      : [{ _tag: "UndoFedFromUnknownOutput", undoInput, output: source.name }];
+  });
+};
+
+// A gate ends `Approved` or `Denied`, never `Succeeded`, and it changes nothing, so an undo
+// declared on one would never run.
+const gateUndoProblems = (spec: BlockSpec): ReadonlyArray<BlockSpecProblem> =>
+  spec.kind === "Gate" && spec.undo._tag === "Undo" ? [{ _tag: "GateHasUndo" }] : [];
+
 /**
  * Checks one declaration against itself: every effect names a declared input or output,
- * `NothingToUndo` is claimed only by a block with no `Writes`, `Creates` or `Destroys`, and a
- * gate has none of those either: it shows its inputs and waits, so it cannot be the write it guards.
+ * `NothingToUndo` is claimed only by a block with no `Writes`, `Creates` or `Destroys`, a gate has
+ * none of those either (it shows its inputs and waits, so it cannot be the write it guards) and
+ * no undo block, and an undo is fed only from inputs and outputs the block declares.
  * Returns every problem; an empty list means the declaration is consistent.
  */
-export const blockSpecProblems = (spec: BlockSpec): ReadonlyArray<BlockSpecProblem> =>
-  spec.effects.flatMap((effect) => effectProblems(spec, effect));
+export const blockSpecProblems = (spec: BlockSpec): ReadonlyArray<BlockSpecProblem> => [
+  ...spec.effects.flatMap((effect) => effectProblems(spec, effect)),
+  ...gateUndoProblems(spec),
+  ...undoProblems(spec),
+];

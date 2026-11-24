@@ -45,6 +45,7 @@ describe("generated JSON Schema", () => {
       "Name",
       "Prose",
       "ResourceKind",
+      "UndoSource",
       "Version",
     ]);
   });

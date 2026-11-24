@@ -65,6 +65,13 @@ Verified on 2026-11-23 and re-checked in M1 Part A the same day, with no change.
 - `Schema.decodeResult` is what `@effect/tsgo` asks for (`preferTypedSchemaDecoder`) when the input already has the Schema's `Encoded` type.
 - `@types/bun` 1.4.5 is now also a dev dependency of `packages/recipes`, for its `generate` script.
 
+## Verified in M1 Part C (2026-11-23)
+
+- No version changed. M1 still adds no runtime dependency to `packages/core`.
+- `Schema.isMinLength` and `Schema.isMaxLength` apply to arrays, and the derived generator honours them constructively: a 64-number array ran 500 times under `it.prop` with no discards.
+- `Result.succeed`, `Result.fail`, `Result.isFailure`, `Result.getOrThrow`, `Option.match` and `Option.map` are used as documented in 4.1.5.
+- `Array.isArray` does not narrow a `ReadonlyArray` member out of a union in TypeScript 7.0.2; use a type guard.
+
 ## Not yet verified
 
 - What Cloudflare currently offers for point-in-time recovery of SQLite-backed Durable Objects, before M2.

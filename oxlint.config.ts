@@ -24,6 +24,12 @@ export default defineConfig({
   },
   overrides: [
     {
+      // A test keeps its small helpers next to the cases that use them, inside `describe`.
+      // Style only; listed as "adjust if noisy" in docs/quality-rails.md.
+      files: ["**/*.test.ts"],
+      rules: { "unicorn/consistent-function-scoping": "off" },
+    },
+    {
       // Files at the top of packages/core leave the package with a single `../`.
       files: ["packages/core/*"],
       rules: {
