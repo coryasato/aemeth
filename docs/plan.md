@@ -9,7 +9,7 @@ Milestones are named M0, M1, … and worked in parts, one session each, starting
 | Milestone | Title | Status |
 |---|---|---|
 | M0 | Workspace and rails | Done 2026-11-23 ([spec](milestones/m0.md)) |
-| M1 | Core | Active: Part A next ([below](#active-milestone-m1-core)) |
+| M1 | Core | Active: Part B next ([below](#active-milestone-m1-core)) |
 | M2 | Engine and the restore drill | Not started |
 | Design | The UI design session | Not started |
 | M3 | Run UI | Not started |
@@ -22,24 +22,35 @@ Milestones are named M0, M1, … and worked in parts, one session each, starting
 
 ## Active milestone: M1, core
 
-Opened 2026-11-23. Part A comes first; it sets the number of later parts. Acceptance criteria are under [M1](#m1-core) below. The spec will be [milestones/m1.md](milestones/m1.md), written in Part A.
+Opened 2026-11-23 and planned in four parts, one session each. Acceptance criteria are under [M1](#m1-core) below. Research findings, the design, the spec's decisions and step-by-step instructions for each group are in [milestones/m1.md](milestones/m1.md).
 
 **Why:** the engine, the UI and the builder all depend on the recipe and run model, so it is built first, as pure code with nothing to deploy ([decision 0002](decisions/0002-recipe-is-a-graph.md), [decision 0007](decisions/0007-tooling.md)).
 
-**What it sets up:** block and recipe Schemas, the recipe validator over the six recipes in [recipes.md](recipes.md), the run `transition` function with property tests, and the first invariants in `packages/core/src/invariants/`. The full list is the acceptance criteria.
+**What it sets up:** block and recipe Schemas, block declarations in `packages/blocks`, the six recipes from [recipes.md](recipes.md) as files with a generated JSON Schema in a new `packages/recipes`, the validator with path checking and the first invariants, and the run `transition` function with property tests. The full list is the acceptance criteria.
 
-**Left out:** any infrastructure, the engine and the UI (M2 onward). Mutation testing must meet `break: 80` from M0.
+**Left out:** block implementations, any infrastructure, the engine and the UI (M2 onward). Mutation testing must meet `break: 80` from M0.
 
 **Split into parts,** one session each:
 
-- **Part A: research and spec.** Effect Schema, JSON Schema generation and `@effect/vitest` property APIs checked against current documentation; unknowns run in the scratchpad; [milestones/m1.md](milestones/m1.md) written with its decisions and the later parts. Closes A1 to A3. *The owner reviews the spec's decisions, and writes or approves the first invariants.*
-- **Later parts:** set by Part A.
+- **Part A: research and spec.** Closes A1 to A3. Done. *The owner answered the six flagged decisions on 2026-11-23: all accepted, decision 4 with a narrower exemption and decision 6 with a rule for references.*
+- **Part B: schemas, block declarations, recipe files and the JSON Schema.** Closes B1 to B3.
+- **Part C: the validator.** Closes C1 to C3. *The owner writes or approves each invariant in `packages/core/src/invariants/` (C3).*
+- **Part D: run events, `transition`, property tests, and the close.** Closes D1 to D3.
 
 **Done when:**
 
-- [ ] **A1. Versions are current:** each M1 library's latest release checked and recorded in [versions.md](versions.md).
-- [ ] **A2. Every M1 unknown is run, not assumed:** including JSON Schema generation from an Effect Schema and property tests over generated recipe graphs.
-- [ ] **A3. The spec is written:** [milestones/m1.md](milestones/m1.md) with findings, decisions flagged for the owner, and the later parts with their groups added here.
+- [x] **A1. Versions are current:** each M1 library's latest release checked and recorded in [versions.md](versions.md). *2026-11-23: no change since M0. Oxlint 1.95.0 and tsrs `tsrs5` are out but stay held at 1.94.0 and `tsrs4` for `@effect/tsgo` 0.73.4. M1 adds no runtime dependency to core.*
+- [x] **A2. Every M1 unknown is run, not assumed:** including JSON Schema generation from an Effect Schema and property tests over generated recipe graphs. *2026-11-23, in a scratch project with `effect` 4.1.5 and Vitest 5.1.1. `Schema.toJsonSchemaDocument` (stable) generated a draft 2020-12 schema that ajv 8.20.0 and the Effect decoder agreed on for four samples, recursive types included; `isPattern` is dropped unless the RegExp has the `u` flag, and `Schema.Number` admits `"NaN"`. Property tests over generated DAGs pass, and a planted false property shrank to 2 nodes. `Arbitrary.filter` on arrays stalls (0 runs, 1001 discards), so generators are built constructively. Uniform random event sequences missed a planted `transition` bug; state-guided sequences found it and shrank it to 4 events. `import.meta.glob` loads recipe files in Vitest. Details in the spec's findings.*
+- [x] **A3. The spec is written:** [milestones/m1.md](milestones/m1.md) with findings, the design, 20 decisions (12 put to the owner), and the parts and groups below. *2026-11-23: revised the same day after a `/code-review high` pass on the spec: cycles are rejected before paths are walked, and the path cap bounds the walk itself; explicit `End` edges let a handled failure end the run `Failed`; cancellation and failed cleanups run every remaining undo and `finally` step; a `ForEachItem` binding; the idempotency key includes the phase, so an undo never shares its step's key; `packages/recipes` added to the root tsconfig references; data on bindings rather than edges flagged as a change to decision 0002; `RunNeedsAttention` renamed `RunFlaggedForAttention`. The owner then answered the six flagged decisions: 1, 2, 3 and 5 as proposed; 4 narrowed so the exemption covers only outputs a block declares `Temporary`, with run-ID tags checked at run time and no per-recipe opt-out; 6 accepted with a reference rule and optional references for `finally` steps, which replace skipping. A second `/code-review high` pass the same day fixed `CleanedUp` (only the attempted cleanup's failure excuses it), added the item to the idempotency key and step, item and attempt to every completion event, made stage 5 a linear dominance check, checked undo blocks, and told B1 to update `packages/blocks`. The owner answered its four design questions: an `End` chooses whether undo runs (decision 15); undo is per for-each item (16); a cancel takes effect between steps (17); `IrreversibleOnlyAfterApproval` also covers `NoUndo` steps that create a `Durable` resource (4). A third pass (`/code-review medium`) found that `vitest/importMeta` does not declare `glob`: run under `effect-tsgo tsc` with `types: []`, it fails, and a local `.d.ts` declaration passes. It also led to: `finally` steps may not use `StepOutput`; for-each steps and their undo are single path entries with list outputs; step events carry their phase and a `MainPhaseEnded` fact, so `transition` needs no recipe; `Finalizing` holds a `Succeeded` main result; gate events carry step, attempt and outputs; the dominance-versus-enumeration property test moved from C1 to C2. The owner answered three more questions: a failure handler runs to its `End` with no cancellation points (decision 18); a cancel during a for-each stops new items (19); a recipe names its first step in `start` (20).*
+- [ ] **B1. Core Schemas exist and round-trip:** `DataType`, `BlockSpec`, `Recipe` in `packages/core`; property tests round-trip every Schema with tag coverage asserted; `require-unicode-regexp` on and shown to fail once.
+- [ ] **B2. Block declarations decode:** every block the six recipes use is declared in `packages/blocks` as a `BlockSpec`, with unique ids and versions.
+- [ ] **B3. The six recipes are files with a generated JSON Schema:** `packages/recipes` holds the six `*.recipe.json` and `recipe.schema.json`; `bun run test` fails on a bad recipe and on a stale JSON Schema; gaps the recipes expose are recorded in the spec.
+- [ ] **C1. Structure, size, cycles and types are checked:** each error case has a test; property tests over generated DAGs show a cycle is found and stops validation before paths are walked; `start`, reachability and `finally` structure are checked.
+- [ ] **C2. Every path is enumerated:** main, undo in reverse order and per for-each item, and `finally`, with a cancellation point before each normal-track step, at each gate and partway through each for-each, none inside a failure handler, `End` with `undo: "Skip"`, and failed cleanups; stage 5's dominance answer agrees with the enumerated paths; the walk stops at the path cap; property tests on path shape.
+- [ ] **C3. Invariants return the failing path:** the owner-approved rules in `packages/core/src/invariants/`, each with a recipe that breaks it on one path and a test that names that path; all six recipes validate.
+- [ ] **D1. Run events and states are Schemas:** every event carries the recipe version and the event schema version; `idempotencyKey` is derived from the run ID, the step ID, the phase and the for-each item; every completion and gate event names the step, item and attempt it ends; step events carry their phase and `MainPhaseEnded` records how the main path ended.
+- [ ] **D2. `transition` covers every run state:** guided property tests check the run invariants after every event, with coverage asserted, and a planted bug is found and shrunk.
+- [ ] **D3. The milestone closes:** `bun run check` passes, `bun run mutate` meets `break: 80`, every acceptance criterion under M1 has its evidence, and this section moves to [milestones/m1.md](milestones/m1.md).
 
 ## M0: workspace and rails
 

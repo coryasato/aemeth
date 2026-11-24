@@ -1,6 +1,6 @@
 # Versions
 
-Verified on 2026-11-23. The tooling rows, Foldkit and its Vite plugin were also installed and run in M0 Part A. Use the latest release that satisfies every constraint here, pin exact versions, and update this file when anything changes.
+Verified on 2026-11-23 and re-checked in M1 Part A the same day, with no change. The tooling rows, Foldkit and its Vite plugin were also installed and run in M0 Part A. Use the latest release that satisfies every constraint here, pin exact versions, and update this file when anything changes.
 
 ## Verified
 
@@ -47,6 +47,14 @@ Verified on 2026-11-23. The tooling rows, Foldkit and its Vite plugin were also 
 
 - Stryker runs `packages/core` with Vitest 5 under Bun's isolated linker. Its sandbox breaks a relative tsconfig `extends` unless the sandbox copies the repository from its root, so `bun run mutate` runs Stryker from the root.
 - GitHub Actions: `actions/checkout@v7.0.1`, `oven-sh/setup-bun@v2.2.0`, `actions/setup-node@v7.1.0` are the latest releases. CI pins Bun 1.4.4 and Node 26.12.1.
+
+## Verified in M1 Part A (2026-11-23)
+
+- `Schema.toJsonSchemaDocument` (stable) generates draft 2020-12 JSON Schema. It returns `{ dialect, schema, definitions }`; a standalone file adds `$schema` and renames `definitions` to `$defs`. `isPattern` is emitted only for a RegExp with the `u` flag. `Schema.Number` also admits the strings `"Infinity"`, `"-Infinity"` and `"NaN"`; use `Finite` or `Int` in documents.
+- `Arbitrary.filter` on an array stalls under `it.prop` (every value discarded). Build generators constructively. `it.prop` takes run counts as `{ arbitrary: { runs } }`.
+- `effect/Graph` is marked unstable throughout; M1 does not use it.
+- Oxlint 1.94.0 has `require-unicode-regexp`.
+- `ajv` 8.20.0 was used in the scratch project only, to check the generated JSON Schema. It is not a dependency.
 
 ## Not yet verified
 

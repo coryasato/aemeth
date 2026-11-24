@@ -11,7 +11,7 @@ Most code in this repository is written by coding agents, so correctness has to 
 | Unit and Effect tests | Vitest 5 with `@effect/vitest` | Everything |
 | Property tests | Inputs generated from the app's own Schemas | `packages/core` |
 | Path checking | The recipe validator, run against the six recipe fixtures | `packages/core` |
-| Run state machine | Random event sequences against `transition`, invariants checked after each event | `packages/core` |
+| Run state machine | State-guided random event sequences against `transition`, invariants checked after each event | `packages/core` |
 | UI logic | Foldkit Story and Scene tests | `apps/web` |
 | Test quality | Stryker mutation testing | `packages/core` |
 | Dead code and dependencies | knip | Everything |
@@ -20,6 +20,14 @@ Most code in this repository is written by coding agents, so correctness has to 
 | CI | GitHub Actions | All of the above on every push |
 | Integration | A temporary Alchemy stack per pull request, destroyed afterwards | `apps/engine`, `infra` |
 | Tracing | Effect tracing exported over OTLP, one span per run step | `apps/engine` |
+
+## Property tests
+
+Found in M1 Part A ([milestones/m1.md](milestones/m1.md)):
+
+- **Build generators constructively.** `Arbitrary.filter` that rejects small values stalls, so use `minLength`, bounded ranges, and add the wanted shape (a cycle, a back edge) by construction.
+- **Guide event sequences by state.** Uniform random events end a run within a few events and missed a planted bug; picking among the events that could arrive in the current state found and shrank it.
+- **Assert coverage.** Each property test over a generator counts the shapes or states it reached, and a following test fails if a required one was never reached, so a property cannot pass vacuously.
 
 ## Invariants
 
