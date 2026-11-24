@@ -8,20 +8,26 @@
   ],
   "type": "module",
   "scripts": {
+    "prepare": "lefthook install",
     "typecheck": "effect-tsgo tsc -b",
     "lint": "oxlint --type-aware",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "test": "vitest run",
     "knip": "knip",
-    "check": "bun run typecheck && bun run lint && bun run format:check && bun run test && bun run knip"
+    "check": "bun run typecheck && bun run lint && bun run format:check && bun run test && bun run knip",
+    "mutate": "stryker run packages/core/stryker.config.json"
   },
   "devDependencies": {
     "@cloudflare/oxlint-config": "0.2.0",
     "@effect/tsgo": "0.73.4",
     "@effect/vitest": "4.1.5",
+    "@stryker-mutator/core": "10.1.1",
+    "@stryker-mutator/vitest-runner": "10.1.1",
+    "@types/bun": "1.4.5",
     "effect": "4.1.5",
     "knip": "6.48.0",
+    "lefthook": "2.2.2",
     "oxfmt": "0.80.0",
     "oxlint": "1.94.0",
     "tsrs": "7.1.0-beta.tsrs4",

@@ -2,7 +2,7 @@
 
 Read [README.md](README.md) and [docs/plan.md](docs/plan.md) before starting work. Decisions already made are in [docs/decisions/](docs/decisions/); do not reopen them without the owner asking.
 
-Milestone work (M0, M1, …) is done in parts, one session each. Follow the `milestone` skill in [.claude/skills/milestone/SKILL.md](.claude/skills/milestone/SKILL.md). Git is handled by the owner: do not commit, and end each session with a one-line commit message.
+Milestone work (M0, M1, …) is done in parts, one session each. Follow the `milestone` skill in [.claude/skills/milestone/SKILL.md](.claude/skills/milestone/SKILL.md). Git is handled by the owner: do not commit, and end each session with a one-line Conventional Commits message, milestone last in parentheses: `chore: add mutation testing and CI (M0 Part C)`. Details are in the skill.
 
 ## Hard rules
 
@@ -23,4 +23,17 @@ Milestone work (M0, M1, …) is done in parts, one session each. Follow the `mil
 
 ## Running the checks
 
-The commands are defined in milestone 0. This section is filled in when the workspace exists.
+Run from the repository root. Each exits non-zero on failure.
+
+| Command | What it runs |
+|---|---|
+| `bun install` | Installs dependencies and, through `prepare`, the lefthook git hooks |
+| `bun run typecheck` | `effect-tsgo tsc -b`: TypeScript 7 with Effect diagnostics |
+| `bun run lint` | `oxlint --type-aware`, including the `packages/core` import boundary |
+| `bun run format` | `oxfmt`: rewrites files. `bun run format:check` only checks |
+| `bun run test` | `vitest run`: unit, Effect and property tests, and the core `package.json` boundary test |
+| `bun run knip` | Unused files, exports and dependencies |
+| `bun run check` | All of the above in that order, stopping at the first failure |
+| `bun run mutate` | Stryker mutation testing on `packages/core`; fails below the `break` threshold in `packages/core/stryker.config.json` |
+
+Run `bun run check` before saying work is done; CI runs it and `bun run mutate` on every push. The pre-commit hook runs typecheck, lint and format check. Vitest and Stryker run on Node: never use `bun --bun` with them.

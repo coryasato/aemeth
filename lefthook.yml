@@ -1,0 +1,11 @@
+# Git hooks. Installed by the root `prepare` script (`lefthook install`) on `bun install`.
+# Tests, knip and mutation testing run in CI, not here, to keep commits fast.
+pre-commit:
+  parallel: true
+  jobs:
+    - name: typecheck
+      run: bun run typecheck
+    - name: lint
+      run: bun run lint
+    - name: format
+      run: bun run format:check

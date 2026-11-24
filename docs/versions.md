@@ -22,9 +22,10 @@ Verified on 2026-11-23. The tooling rows, Foldkit and its Vite plugin were also 
 | `oxfmt` | 0.80.0 | |
 | `vitest` | 5.1.1 | Runs on Node, not on the Bun runtime |
 | `vite` | 8.3.8 | |
-| `@stryker-mutator/core`, `@stryker-mutator/vitest-runner` | 10.1.1 | Needs the `tsconfigFile` workaround, see [milestones/m0.md](milestones/m0.md) |
+| `@stryker-mutator/core`, `@stryker-mutator/vitest-runner` | 10.1.1 | Needs the `tsconfigFile` workaround, an explicit `plugins` entry, and to run from the repository root, see [milestones/m0.md](milestones/m0.md) |
 | `knip` | 6.48.0 | Parses with oxc, independent of TypeScript |
 | `lefthook` | 2.2.2 | |
+| `@types/bun` | 1.4.5 | Types for the Claude Code hook in `.claude/hooks`. Local runtime is Bun 1.4.4 |
 
 ## Constraints
 
@@ -41,6 +42,11 @@ Verified on 2026-11-23. The tooling rows, Foldkit and its Vite plugin were also 
 - Effect's `Arbitrary` is Effect's own generator, not fast-check. `effect` has no dependencies. The module is marked unstable. `@effect/vitest`'s `it.prop` takes Schemas directly.
 - Stryker works with Vitest 5 under Bun with the `tsconfigFile` workaround. knip and lefthook work with TypeScript 7.
 - The Foldkit Vite plugin builds under Bun, and a Foldkit Story test passes under Vitest 5.
+
+## Verified in M0 Part C (2026-11-23)
+
+- Stryker runs `packages/core` with Vitest 5 under Bun's isolated linker. Its sandbox breaks a relative tsconfig `extends` unless the sandbox copies the repository from its root, so `bun run mutate` runs Stryker from the root.
+- GitHub Actions: `actions/checkout@v7.0.1`, `oven-sh/setup-bun@v2.2.0`, `actions/setup-node@v7.1.0` are the latest releases. CI pins Bun 1.4.4 and Node 26.12.1.
 
 ## Not yet verified
 

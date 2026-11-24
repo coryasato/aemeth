@@ -85,8 +85,16 @@ It is the only place a milestone's status is written. Update it and "Active mile
 
 ## End of every session
 
-The owner handles git. Do not commit, branch or push. End the session with one concise commit message line, for example:
+The owner handles git. Do not commit, branch or push. End the session with a commit message of one line, no body, following [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): summary (M<N> Part <X>)`.
+
+- **type:** one of `feat`, `fix`, `docs`, `test`, `refactor`, `build`, `ci`, `chore`. When a session mixes several, use `chore`.
+- **scope:** optional, the package touched (`core`, `engine`, `web`, `blocks`, `infra`). Leave it out when the change spans several.
+- **summary:** lower case, imperative, no full stop.
+- **The milestone and part go last, in parentheses,** so `git log --grep "M0 Part C"` finds them.
+
+For example:
 
 ```
-M0 Part B: Bun workspace, typecheck, lint, format, tests, knip, core import boundary
+chore: add mutation testing, git hooks, invariants guard and CI (M0 Part C)
+feat(core): add recipe graph schema and validator (M1 Part B)
 ```

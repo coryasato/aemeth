@@ -60,6 +60,12 @@ These were inferred from the rule list on 2026-11-23, then run against Effect-st
 
 `reportUnusedDisableDirectives` is an error in this preset, so every disable comment must still be needed.
 
-## Items to confirm in M0
+## Tools confirmed in M0
 
-See "Not yet verified" in [versions.md](versions.md). If a tool turns out not to work with the current stack, record the replacement here.
+Every tool above that M0 sets up works with the current stack, and none was replaced. The workarounds:
+
+- **Stryker:** TypeScript 7 has no JS API, so its tsconfig rewrite is skipped, and it runs from the repository root so relative tsconfig `extends` still resolve. `@stryker-mutator/typescript-checker` is not used. Details in [milestones/m0.md](milestones/m0.md).
+- **Vitest and Stryker run on Node,** not on the Bun runtime.
+- **A brand name is invisible at runtime,** so Stryker's mutant of `Schema.brand("X")` cannot be killed. Mark it with `// Stryker disable next-line StringLiteral` and a reason; never raise `ignoreStatic` to hide it, since Schemas are static code.
+
+Story and Scene tests, per-PR integration stacks and tracing arrive with M2 and M3. Items still to verify are under "Not yet verified" in [versions.md](versions.md).
