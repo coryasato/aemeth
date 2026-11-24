@@ -4,7 +4,9 @@ Date: 2026-11-23. Status: accepted.
 
 ## Decision
 
-A recipe is stored as a graph: nodes are block instances, and edges carry control flow and typed data from one block's outputs to another's inputs. This holds from the first version, even though the first editor shows a recipe as an ordered list.
+A recipe is stored as a graph: nodes are block instances, and edges carry control flow. Typed data travels from one block's outputs to another's inputs on the bindings of a step's inputs, each of which names the output it takes. This holds from the first version, even though the first editor shows a recipe as an ordered list.
+
+*Changed on 2026-11-23, at the close of M1, with the owner's approval ([M1 spec](../milestones/m1.md), decision 6). The first wording had edges carry typed data as well. One step may take inputs from several earlier steps that are not its direct predecessor, and a binding names its source exactly where an edge would have to be repeated per input. The format is set out in [0009](0009-recipe-format-block-contract-and-run-model.md).*
 
 ## Why
 

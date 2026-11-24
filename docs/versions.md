@@ -1,6 +1,6 @@
 # Versions
 
-Verified on 2026-11-23 and re-checked in M1 Part A the same day, with no change. The tooling rows, Foldkit and its Vite plugin were also installed and run in M0 Part A. Use the latest release that satisfies every constraint here, pin exact versions, and update this file when anything changes.
+Verified on 2026-11-23 and re-checked in M1 Part A the same day, with no change. M1 changed no version. The tooling rows, Foldkit and its Vite plugin were also installed and run in M0 Part A. Use the latest release that satisfies every constraint here, pin exact versions, and update this file when anything changes.
 
 ## Verified
 
@@ -71,6 +71,14 @@ Verified on 2026-11-23 and re-checked in M1 Part A the same day, with no change.
 - `Schema.isMinLength` and `Schema.isMaxLength` apply to arrays, and the derived generator honours them constructively: a 64-number array ran 500 times under `it.prop` with no discards.
 - `Result.succeed`, `Result.fail`, `Result.isFailure`, `Result.getOrThrow`, `Option.match` and `Option.map` are used as documented in 4.1.5.
 - `Array.isArray` does not narrow a `ReadonlyArray` member out of a union in TypeScript 7.0.2; use a type guard.
+
+## Verified in M1 Part D (2026-11-23)
+
+- No version changed, and M1 closes with `effect` as the only runtime dependency of `packages/core`.
+- `Schema.Json` has a derived generator and round-trips through `Schema.toCodecJson` and JSON text. It admits `null`.
+- A `Schema.TaggedUnion` exposes its cases by tag as `.cases`, and a `Schema.Literals` its values as `.literals`. Tests use both to check that every tag was reached.
+- `Result.map`, `Result.mapError` and `Result.flatMap` are used as documented in 4.1.5.
+- `it.prop` stops shrinking after 100 candidates by default (`maxShrinks`), and on a fixed-length array it changes one number at a time.
 
 ## Not yet verified
 

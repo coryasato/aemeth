@@ -31,7 +31,7 @@ Dependencies point one way: `apps/*`, `packages/blocks` and `packages/recipes` d
 ## Documents
 
 - [docs/plan.md](docs/plan.md): milestones, acceptance criteria and status
-- [docs/milestones/](docs/milestones/): one spec per milestone, written in its Part A
+- [docs/milestones/](docs/milestones/): one file per milestone: its spec, written in its Part A, and once it closes its acceptance criteria and the record of how it closed
 - [docs/recipes.md](docs/recipes.md): the six recipes and their build order
 - [docs/quality-rails.md](docs/quality-rails.md): the checks every change must pass
 - [docs/versions.md](docs/versions.md): verified library versions and known constraints
@@ -41,4 +41,4 @@ Dependencies point one way: `apps/*`, `packages/blocks` and `packages/recipes` d
 
 ## Status
 
-M0 (workspace and rails) closed on 2026-11-23: every rail runs locally, on commit and in CI. M1 (core) is open: the Schemas, the block declarations, the six recipe files and the validator are written. The validator checks structure, size, cycles and types, walks every path, and runs nine invariants on each; all six recipes pass it. The next step is Part D, run events and the `transition` function. Progress is in [docs/plan.md](docs/plan.md#status).
+M0 (workspace and rails) and M1 (core) closed on 2026-11-23. Every rail runs locally, on commit and in CI. The core is pure code in `packages/core`: the block and recipe Schemas, a validator that walks every path of a recipe and runs nine invariants on each, and the `transition` function that computes a run's state from its log of events. All six recipes pass the validator. Nothing is deployed yet. M2 (the engine and the restore drill) is open; the next step is its Part A, research and spec, which includes the orchestration spike. Progress is in [docs/plan.md](docs/plan.md#status).

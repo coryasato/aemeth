@@ -5,7 +5,7 @@ description: Open, work and close an Aemeth milestone (M0, M1, …) from docs/pl
 
 # A milestone: open, work in parts, close
 
-Milestones and their acceptance criteria live in `docs/plan.md`. The rules every change follows are in the root `CLAUDE.md`. This skill covers the steps between.
+Milestones and their acceptance criteria live in `docs/plan.md` until they close; a closed milestone's criteria and history are in `docs/milestones/m<N>.md`. The rules every change follows are in the root `CLAUDE.md`. This skill covers the steps between.
 
 ## Names
 
@@ -18,7 +18,8 @@ Milestones and their acceptance criteria live in `docs/plan.md`. The rules every
 | Fact | Home |
 |---|---|
 | Every milestone's status, at a glance | `docs/plan.md`, "Status" table |
-| What a milestone must achieve (acceptance criteria) | `docs/plan.md`, the milestone's own section |
+| What a milestone must achieve (acceptance criteria), while it is open or not started | `docs/plan.md`, the milestone's own section |
+| A closed milestone's acceptance criteria | `docs/milestones/m<N>.md`, "Acceptance criteria", moved there at the close |
 | The open milestone: why, scope, parts, and the "Done when" checklist with evidence | `docs/plan.md`, "Active milestone" |
 | Research findings, the spec's decisions, step-by-step instructions per group | `docs/milestones/m<N>.md` |
 | A closed milestone's "Active milestone" section, as history | `docs/milestones/m<N>.md`, appended at the close |
@@ -60,11 +61,12 @@ The milestone closes after its last part, before the next one opens.
 2. Every rail in `docs/quality-rails.md` passes.
 3. Move what outlives the milestone to its home: decision records, `docs/versions.md`, `docs/quality-rails.md`, `CLAUDE.md`.
 4. Move the "Active milestone" section, unchanged, to the end of `docs/milestones/m<N>.md` under "## Closed", headed with the close date.
-5. Set the milestone's row in the "Status" table to `Done <date>` with a link to its spec. Open the next milestone: its "Active milestone" section with Part A as its first part. Update the "Status" section of `README.md`.
+5. Move the milestone's own section (its acceptance criteria) out of `docs/plan.md` to the top of `docs/milestones/m<N>.md`, under "## Acceptance criteria", in place of the link that pointed to it. `docs/plan.md` then lists only milestones that are open or not started; a closed one is its row in "Status".
+6. Set the milestone's row in the "Status" table to `Done <date>` with a link to its spec. Open the next milestone: its "Active milestone" section with Part A as its first part. Update the "Status" section of `README.md`.
 
 ## "Active milestone" in plan.md
 
-One section, placed below "Status" and above the milestone list, for the one open milestone. In order:
+One section, placed below "Status" and above the list of milestones still to do, for the one open milestone. In order:
 
 - **Heading:** `## Active milestone: M<N>, <name>`.
 - **Opened** date, number of parts, and links to the acceptance criteria and the spec.

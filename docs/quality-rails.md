@@ -39,6 +39,16 @@ Found in M1 Part C:
 - **A stage's tests look only at that stage,** but fail if an earlier stage rejected the recipe: otherwise "no errors here" passes for a recipe that never got there.
 - **Read the surviving mutants of a rule.** A score above the threshold still hid twelve branches in the invariants that no test told apart.
 
+Found in M1 Part D, on the run state machine:
+
+- **Give the property two opinions.** The generator reads the state to list what could arrive next, so it cannot judge that state. The run invariants are checked by separate code that reads only the log.
+- **Say which candidates must be rejected.** Each state lists good events and bad ones, and the property fails if a good one is rejected or a bad one accepted. Without the bad ones, a `transition` that accepts everything passes.
+- **Count how often each rare case is reached, then choose the number of runs.** A coverage test that a case was reached at least once fails by chance if the case is rare. The rarest here were reached twice in a thousand runs at first. Weighting the generator towards them brought that to about fifteen, so a thousand runs are enough.
+- **A coverage test from Part C failed by chance at the close.** The path tests asked for a generated recipe with more than 50 paths, which 300 runs gave about 4 times and, one run in fifty, not at all. It stopped `bun run mutate` at its first test run. The threshold is now 20, reached about 80 times.
+- **The same happened to a coverage test written in Part D.** The round-trip test of `RunEvent` missed its rarest value, in one generated event in about a hundred, one run in twenty at 300 runs. When a coverage test is added, work out or count how often its rarest case comes up, and run the suite many times in a row before calling it done.
+- **Weight choices by repeating them, never by a counter the sequence moves.** Offering an event "when `seq` is even" meant that dropping one event changed what every later number picked, and a failing sequence would not shrink.
+- **Let a sequence shorten itself.** A turn may produce no event, and when a sequence fails the test drops every turn the failure does not need before it reports. The generator's own shrinking changes one number at a time and cannot drop a step, whose start and end are two turns.
+
 ## Invariants
 
 - Invariants live in `packages/core/src/invariants/`.
@@ -84,7 +94,7 @@ Every tool above that M0 sets up works with the current stack, and none was repl
 
 - **Stryker:** TypeScript 7 has no JS API, so its tsconfig rewrite is skipped, and it runs from the repository root so relative tsconfig `extends` still resolve. `@stryker-mutator/typescript-checker` is not used. Details in [milestones/m0.md](milestones/m0.md).
 - **Vitest and Stryker run on Node,** not on the Bun runtime.
-- **Test helpers are not mutated.** `packages/core/src/testing/` is left out of Stryker's `mutate` globs (M1 Part C). A full run on `packages/core` takes five to seven minutes.
+- **Test helpers are not mutated.** `packages/core/src/testing/` is left out of Stryker's `mutate` globs (M1 Part C). A full run on `packages/core` took five to seven minutes at the end of M1 Part C and takes nine to eleven since Part D; CI allows the whole job twenty.
 - **A brand name is invisible at runtime,** so Stryker's mutant of `Schema.brand("X")` cannot be killed. Mark it with `// Stryker disable next-line StringLiteral` and a reason; never raise `ignoreStatic` to hide it, since Schemas are static code.
 
 Story and Scene tests, per-PR integration stacks and tracing arrive with M2 and M3. Items still to verify are under "Not yet verified" in [versions.md](versions.md).

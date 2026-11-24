@@ -55,6 +55,15 @@ export const RecipeId = idString(kebabCase).pipe(
 );
 export type RecipeId = typeof RecipeId.Type;
 
+/** A run's id, chosen by the engine when the run starts. Letters, digits, `-` and `_`. */
+export const RunId = Schema.String.pipe(
+  Schema.check(Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/u), Schema.isMaxLength(maxIdLength)),
+  // Stryker disable next-line StringLiteral: a brand name exists only in types, so no test can tell it apart.
+  Schema.brand("RunId"),
+  Schema.annotate({ identifier: "RunId" }),
+);
+export type RunId = typeof RunId.Type;
+
 /** The version of a block or a recipe: 1, 2, 3, … */
 export const Version = Schema.Int.pipe(
   Schema.check(Schema.isBetween({ minimum: 1, maximum: 1_000_000 })),

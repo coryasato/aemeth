@@ -556,7 +556,9 @@ describe("paths of generated recipes", () => {
       expect(withCap(paths.length - 1)).toEqual(
         Result.fail({ _tag: "TooManyPaths", cap: paths.length - 1 }),
       );
-      seen.overCap += paths.length > 50 ? 1 : 0;
+      // More than 20 paths, reached about 80 times in 300 runs. At more than 50 it was reached
+      // about 4 times, and not at all one run in fifty, which failed the coverage test by chance.
+      seen.overCap += paths.length > 20 ? 1 : 0;
     },
     runs,
   );

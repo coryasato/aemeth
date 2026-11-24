@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Schema } from "effect";
-import { BlockSpec, DataType, Recipe } from "./index";
+import { BlockSpec, DataType, EventRejected, Recipe, RunEvent, RunState } from "./index";
 
 /**
  * Every Schema survives a trip through JSON text: encode, stringify, parse, decode.
@@ -170,5 +170,107 @@ describe("Recipe", () => {
     expect(withoutForEach).toBeGreaterThan(0);
     expect(withSchemaField).toBeGreaterThan(0);
     expect([...literals].toSorted()).toEqual(["array", "boolean", "number", "object", "string"]);
+  });
+});
+
+// The rarest value of a run event, `undo: "Skip"`, is in one generated event in about a hundred:
+// 300 runs missed it one time in twenty, which failed the coverage test by chance.
+const runRuns = { arbitrary: { runs: 2000, size: 16 } };
+
+const attemptTags = [
+  "_tag=Step",
+  "_tag=Gate",
+  "_tag=Undo",
+  "phase=Main",
+  "phase=Finally",
+  "status=Open",
+  "status=Succeeded",
+  "status=FailedRetryable",
+  "status=Failed",
+  "status=Approved",
+  "status=Denied",
+  "status=Cancelled",
+];
+
+describe("RunEvent", () => {
+  const seen = new Set<string>();
+  const check = roundTrips(RunEvent, seen);
+  let withItem = 0;
+  let withoutItem = 0;
+  let retryable = 0;
+  let final = 0;
+
+  it.prop(
+    "round-trips through JSON",
+    [RunEvent],
+    ([event]) => {
+      check(event);
+      if (event._tag === "StepStarted" || event._tag === "UndoStarted") {
+        withItem += event.item === undefined ? 0 : 1;
+        withoutItem += event.item === undefined ? 1 : 0;
+      }
+      if (event._tag === "StepFailed" || event._tag === "UndoFailed") {
+        retryable += event.retryable ? 1 : 0;
+        final += event.retryable ? 0 : 1;
+      }
+    },
+    runRuns,
+  );
+
+  it("reached every event, phase and way for the main phase to end", () => {
+    expect([...seen]).toEqual(
+      expect.arrayContaining([
+        ...Object.keys(RunEvent.cases).map((tag) => `_tag=${tag}`),
+        "phase=Main",
+        "phase=Finally",
+        "result=Succeeded",
+        "result=Failed",
+        "result=Cancelled",
+        "undo=Run",
+        "undo=Skip",
+      ]),
+    );
+    expect(Object.keys(RunEvent.cases)).toHaveLength(16);
+  });
+
+  it("reached work with and without an item, and failures that may and may not be retried", () => {
+    expect(withItem).toBeGreaterThan(0);
+    expect(withoutItem).toBeGreaterThan(0);
+    expect(retryable).toBeGreaterThan(0);
+    expect(final).toBeGreaterThan(0);
+  });
+});
+
+describe("RunState", () => {
+  const seen = new Set<string>();
+  const check = roundTrips(RunState, seen);
+
+  it.prop("round-trips through JSON", [RunState], ([state]) => check(state), runRuns);
+
+  it("reached every state, track and kind of attempt", () => {
+    expect([...seen]).toEqual(
+      expect.arrayContaining([
+        ...Object.keys(RunState.cases).map((tag) => `_tag=${tag}`),
+        ...attemptTags,
+        "track=Normal",
+        "track=CancelRequested",
+        "track=Handling",
+        "main=Succeeded",
+        "main=Failed",
+        "main=Cancelled",
+      ]),
+    );
+    expect(Object.keys(RunState.cases)).toHaveLength(9);
+  });
+});
+
+describe("EventRejected", () => {
+  const seen = new Set<string>();
+  const check = roundTrips(EventRejected, seen);
+
+  it.prop("round-trips through JSON", [EventRejected], ([rejected]) => check(rejected), runs);
+
+  it("reached several reasons", () => {
+    expect([...seen].filter((entry) => entry.startsWith("reason=")).length).toBeGreaterThan(9);
   });
 });
