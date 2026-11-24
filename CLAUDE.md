@@ -2,6 +2,8 @@
 
 Read [README.md](README.md) and [docs/plan.md](docs/plan.md) before starting work. Decisions already made are in [docs/decisions/](docs/decisions/); do not reopen them without the owner asking.
 
+Milestone work (M0, M1, …) is done in parts, one session each. Follow the `milestone` skill in [.claude/skills/milestone/SKILL.md](.claude/skills/milestone/SKILL.md). Git is handled by the owner: do not commit, and end each session with a one-line commit message.
+
 ## Hard rules
 
 1. **Do not weaken or delete invariants.** Everything under `packages/core/src/invariants/` is written and owned by a person. Adding an invariant is fine. Changing or removing one needs explicit approval from the owner in the conversation.

@@ -1,6 +1,6 @@
 # Quality rails
 
-Most code in this repository is written by coding agents, so correctness has to be checked by machines. A person owns the invariants; the rails check the implementation against them. All rails are set up in milestone 0, before feature work.
+Most code in this repository is written by coding agents, so correctness has to be checked by machines. A person owns the invariants; the rails check the implementation against them. All rails are set up in M0, before feature work.
 
 | Layer | Tool | Scope |
 |---|---|---|
@@ -30,17 +30,19 @@ Most code in this repository is written by coding agents, so correctness has to 
 
 ## Lint preset
 
-Milestone 0 trials `@cloudflare/oxlint-config` (0.2.0, first published 2026-11-20) as the base Oxlint config, pinned exactly, with overrides for Effect-style code.
+M0 trials `@cloudflare/oxlint-config` (0.2.0, first published 2026-11-20) as the base Oxlint config, pinned exactly, with overrides for Effect-style code.
+
+**Trial result (M0 Part A, 2026-11-23): adopted.** Three overrides were needed. Type-aware rules work through `tsrs` without `oxlint-tsgolint`. Details in [milestones/m0.md](milestones/m0.md).
 
 - **Why try it:** every rule is listed explicitly at error level, and it includes the strict type-aware rules this project wants: no `any`, the `no-unsafe-*` family, exhaustive switches, no floating or misused promises, and no unused disable comments.
 - **What it is:** `@nkzw/oxlint-config` 4.1.0 plus about 19 Cloudflare additions, about 228 rules in total. Published by Cloudflare with provenance. It is 0.x with no stated stability policy, and nothing in it is specific to Workers.
 - **What it does not cover:** a discarded Effect value. `@effect/tsgo` covers that, so both tools are needed.
 - **Fallback (agreed):** if the trial needs more than about ten overrides or produces false positives on Effect code, write our own config and copy the strict type-aware rules we want.
-- **Requirements to confirm:** it needs type-aware linting through `tsrs`, currently a 7.1 beta, and is configured in `oxlint.config.ts`, not `.oxlintrc.json`.
+- **Requirements (confirmed):** it needs type-aware linting through `tsrs`, currently a 7.1 beta, and is configured in `oxlint.config.ts`, not `.oxlintrc.json`.
 
 ### Known conflicts
 
-These were inferred from the rule list on 2026-11-23. None has been run against Effect code yet. Update this table with what the trial finds.
+These were inferred from the rule list on 2026-11-23, then run against Effect-style code in M0 Part A. The first three fired and are turned off. `curly` also fired and is kept. The rest did not fire on the sample.
 
 | Rule | Conflict | Planned action |
 |---|---|---|
@@ -58,6 +60,6 @@ These were inferred from the rule list on 2026-11-23. None has been run against 
 
 `reportUnusedDisableDirectives` is an error in this preset, so every disable comment must still be needed.
 
-## Items to confirm in milestone 0
+## Items to confirm in M0
 
 See "Not yet verified" in [versions.md](versions.md). If a tool turns out not to work with the current stack, record the replacement here.

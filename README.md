@@ -29,13 +29,15 @@ Dependencies point one way: `apps/*` and `packages/blocks` depend on `packages/c
 
 ## Documents
 
-- [docs/plan.md](docs/plan.md): milestones and acceptance criteria
+- [docs/plan.md](docs/plan.md): milestones, acceptance criteria and status
+- [docs/milestones/](docs/milestones/): one spec per milestone, written in its Part A
 - [docs/recipes.md](docs/recipes.md): the six recipes and their build order
 - [docs/quality-rails.md](docs/quality-rails.md): the checks every change must pass
 - [docs/versions.md](docs/versions.md): verified library versions and known constraints
 - [docs/decisions/](docs/decisions/): one record per major decision
 - [CLAUDE.md](CLAUDE.md): rules for coding agents working in this repository
+- [.claude/skills/](.claude/skills/): project skills for coding agents, including the milestone workflow
 
 ## Status
 
-Planning is complete. No code has been written yet. The next step is milestone 0 in [docs/plan.md](docs/plan.md).
+Planning is complete. M0 Part A (research and spec) is done. The next step is M0 Part B in [docs/milestones/m0.md](docs/milestones/m0.md).
