@@ -1,0 +1,47 @@
+# The integration rail (docs/quality-rails.md): for each pull request, deploy the stack to a
+# stage of its own, drive the deployed engine, and destroy the stage, also when a step fails.
+# The suite deploys and destroys by itself; the last step is for a run that died before it could.
+#
+# Needs two repository secrets: CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (infra/README.md
+# lists the token's permissions). A pull request from a fork has no secrets and is skipped.
+name: Integration
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+# One stage per pull request: a new push waits for the run before it, which is destroying it.
+concurrency:
+  group: integration-pr-${{ github.event.number }}
+  cancel-in-progress: false
+
+jobs:
+  integration:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: "true"
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ALCHEMY_TEST_STAGE: pr-${{ github.event.number }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: 1.4.4
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26.12.1
+      - run: bun install --frozen-lockfile
+      - name: Check the Cloudflare credentials are there
+        working-directory: infra
+        run: bunx alchemy provider check-env
+      - name: Deploy the stage, test it, destroy it
+        run: bun run test:integration
+      - name: Destroy the stage, whatever happened
+        if: always()
+        working-directory: infra
+        run: bunx alchemy destroy --stage "$ALCHEMY_TEST_STAGE" --yes

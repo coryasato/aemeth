@@ -35,6 +35,31 @@
             "options": {
               "allowedUnstableApis": ["@effect/vitest"]
             }
+          },
+          {
+            "include": ["infra/**/*.ts"],
+            "options": {
+              "allowedUnstableApis": ["effect/http", "@effect/vitest"]
+            }
+          },
+          {
+            "include": ["apps/engine/**/*.ts"],
+            "options": {
+              "diagnosticSeverity": {
+                "floatingEffect": "error"
+              },
+              "allowedExperimentalApis": ["@effect/platform-cloudflare"],
+              "allowedUnstableApis": [
+                "effect/workflow",
+                "effect/cluster",
+                "effect/rpc",
+                "effect/http",
+                "effect/sql",
+                "effect/reactivity",
+                "@effect/sql-sqlite-node",
+                "@effect/vitest"
+              ]
+            }
           }
         ]
       }

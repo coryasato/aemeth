@@ -4,7 +4,14 @@ import type { StepId } from "../ids";
 import type { Recipe } from "../Recipe";
 import { decodeRecipe } from "../Recipe";
 import { findCycle } from "./graph";
-import type { Limits, ResolvedStep, SizeError, StructureError, WiringError } from "./model";
+import type {
+  Limits,
+  ResolvedRecipe,
+  ResolvedStep,
+  SizeError,
+  StructureError,
+  WiringError,
+} from "./model";
 import { limits as defaultLimits } from "./model";
 import type { Path } from "./paths";
 import { enumeratePaths, toPath } from "./paths";
@@ -15,7 +22,21 @@ import { checkStructure } from "./structure";
 import { viewOf } from "./view";
 import { checkWiring } from "./wiring";
 
-export type { Hop, Limits, Place, SizeError, StructureError, WiringError } from "./model";
+export type {
+  Hop,
+  Limits,
+  Place,
+  ResolvedBinding,
+  ResolvedForEach,
+  ResolvedInput,
+  ResolvedRecipe,
+  ResolvedStep,
+  ResolvedUndo,
+  SizeError,
+  StructureError,
+  Target,
+  WiringError,
+} from "./model";
 export { limits } from "./model";
 export type { CleanupOutcome, MainEnd, MainOutcome, Path, PathEntry, RunResult } from "./paths";
 export type { AlwaysOnRule, RuleName, Violation } from "./rules";
@@ -33,8 +54,16 @@ export type ValidationFailure =
   | { readonly _tag: "TooManyPaths"; readonly cap: number }
   | { readonly _tag: "Invariants"; readonly violations: ReadonlyArray<Violation> };
 
-/** A recipe that passed every stage, with every path a run of it could take. */
-export type ValidRecipe = { readonly recipe: Recipe; readonly paths: ReadonlyArray<Path> };
+/**
+ * A recipe that passed every stage, with every path a run of it could take. `resolved` is the
+ * recipe with every name looked up: its steps hold their blocks, and its edges their targets, so
+ * the engine never looks a name up (M2).
+ */
+export type ValidRecipe = {
+  readonly recipe: Recipe;
+  readonly resolved: ResolvedRecipe;
+  readonly paths: ReadonlyArray<Path>;
+};
 
 /**
  * Validates a decoded recipe against the blocks it may use (stages 2 to 7). Checks size,
@@ -80,7 +109,7 @@ export const validate = (
   if (violations.length > 0) {
     return Result.fail({ _tag: "Invariants", violations });
   }
-  return Result.succeed({ recipe, paths: walked.success.map(toPath) });
+  return Result.succeed({ recipe, resolved, paths: walked.success.map(toPath) });
 };
 
 /** A recipe document that is not a recipe at all (stage 1). */

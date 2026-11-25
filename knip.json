@@ -6,7 +6,9 @@
     },
     "packages/*": {},
     "apps/*": {},
-    "infra": {}
+    "infra": {
+      "entry": ["vitest.integration.config.ts", "test/**/*.integ.ts"]
+    }
   },
   "ignoreDependencies": ["@effect/language-service"]
 }

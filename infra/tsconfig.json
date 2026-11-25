@@ -1,8 +1,17 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "dist"
+    "rootDir": ".",
+    "outDir": "dist",
+    "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src"]
+  "include": ["alchemy.run.ts", "vitest.integration.config.ts", "test"],
+  "references": [
+    {
+      "path": "../apps/engine"
+    },
+    {
+      "path": "../packages/core"
+    }
+  ]
 }

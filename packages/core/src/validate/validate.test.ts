@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Result, Schema } from "effect";
 import { limits, Recipe, validate, validateDocument } from "../index";
+import { checkStructure } from "./structure";
 import {
   block,
   chain,
@@ -35,6 +36,7 @@ describe("validate", () => {
     expect(result).toEqual(
       Result.succeed({
         recipe: document,
+        resolved: Result.getOrThrow(checkStructure(document, catalog)),
         paths: [
           { entries: [], main: { result: "Cancelled" }, result: "Cancelled" },
           {

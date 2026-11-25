@@ -1,10 +1,11 @@
 import { blockSpecs } from "@aemeth/blocks";
 import type { BlockSpec } from "@aemeth/core";
-import { decodeRecipe, validateDocument } from "@aemeth/core";
+import { decodeRecipe, followsRecipe, validateDocument } from "@aemeth/core";
+import { play, scriptOf } from "@aemeth/core/testing";
 import { describe, expect, it } from "@effect/vitest";
-import { Result } from "effect";
+import { Option, Result } from "effect";
 import committedJsonSchema from "../recipe.schema.json" with { type: "json" };
-import { recipeJsonSchema, recipeJsonSchemaText } from "./index";
+import { recipeFiles, recipeJsonSchema, recipeJsonSchemaText } from "./index";
 
 // Every recipe file in the package, keyed by its path from this folder.
 const files = import.meta.glob<unknown>("../*.recipe.json", { eager: true, import: "default" });
@@ -33,6 +34,16 @@ describe("recipe files", () => {
     ]);
   });
 
+  // The engine's Worker is bundled with `recipeFiles`, which names each file: a recipe added to
+  // the folder and not to that list would never reach the engine.
+  it("are all in the list the engine is bundled with, and nothing else is", () => {
+    // Both sides by file name: a recipe file is named after its id.
+    const byName = (a: string, b: string) => a.localeCompare(b);
+    expect(
+      recipeFiles.toSorted((a, b) => byName(`${a.id}.recipe.json`, `${b.id}.recipe.json`)),
+    ).toEqual(recipes.toSorted((a, b) => byName(a.name, b.name)).map((recipe) => recipe.document));
+  });
+
   describe.each(recipes)("$name", ({ document, name }) => {
     it("decodes as a Recipe, with no unknown field", () => {
       const result = decodeRecipe(document);
@@ -47,6 +58,18 @@ describe("recipe files", () => {
 
     it("passes the validator: structure, types, every path and every invariant", () => {
       expect(failureOf(document)).toBe("valid");
+    });
+
+    // The engine's half of the same claim (M2 B2): `decide`, told how each step of a path turns
+    // out, takes that path and no other, and the run ends in the path's result.
+    it("is run by `decide` along every path the validator enumerates", () => {
+      const valid = Result.getOrThrow(validateDocument(document, blocks));
+      expect(valid.paths.length).toBeGreaterThan(0);
+      for (const path of valid.paths) {
+        const played = play(valid, scriptOf(valid, path));
+        expect(played._tag === "Stuck" ? played.why : played.state._tag).toBe(path.result);
+        expect(followsRecipe(valid, played.log)).toEqual(Result.succeed(Option.some(path)));
+      }
     });
   });
 

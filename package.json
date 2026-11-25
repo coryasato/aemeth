@@ -14,6 +14,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "test": "vitest run",
+    "test:integration": "vitest run --root infra --config vitest.integration.config.ts",
     "knip": "knip",
     "check": "bun run typecheck && bun run lint && bun run format:check && bun run test && bun run knip",
     "mutate": "stryker run packages/core/stryker.config.json"

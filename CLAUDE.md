@@ -15,7 +15,7 @@ Milestone work (M0, M1, …) is done in parts, one session each. Follow the `mil
 ## Conventions
 
 - **Runtime and package manager:** Bun. Use `bun` and `bunx`, not `npm` or `pnpm`.
-- **Failures are states, not exceptions.** Model every failure as a typed error or an explicit state with a defined next move. Do not throw.
+- **Failures are states, not exceptions.** Model every failure as a typed error or an explicit state with a defined next move. Do not throw. The one exception is a test helper (a `testing/` folder, or a `*.test.ts` file), which may throw to fail the test that misused it.
 - **Make impossible states unrepresentable.** Prefer tagged unions over optional fields and booleans.
 - **Schemas are defined once** in `packages/core` and reused by the engine, the API, the UI and the tests.
 - **Messages and events are facts in the past tense** (`StepSucceeded`, `ApprovalDenied`), not commands.
@@ -34,6 +34,7 @@ Run from the repository root. Each exits non-zero on failure.
 | `bun run test` | `vitest run`: unit, Effect and property tests, and the core `package.json` boundary test |
 | `bun run knip` | Unused files, exports and dependencies |
 | `bun run check` | All of the above in that order, stopping at the first failure |
+| `bun run test:integration` | The integration suite in `infra/test`: deploys the stack to `$ALCHEMY_TEST_STAGE` (default `test_$USER`) on Cloudflare, drives the deployed engine, destroys the stage. Needs an Alchemy login with Access permission; see [infra/README.md](infra/README.md) |
 | `bun run mutate` | Stryker mutation testing on `packages/core`; fails below the `break` threshold in `packages/core/stryker.config.json` |
 
-Run `bun run check` before saying work is done; CI runs it and `bun run mutate` on every push. The pre-commit hook runs typecheck, lint and format check. Vitest and Stryker run on Node: never use `bun --bun` with them.
+Run `bun run check` before saying work is done; CI runs it and `bun run mutate` on every push, and `bun run test:integration` for every pull request. Run the integration suite yourself when a change touches `apps/engine/src/cloudflare`, `infra`, or how the engine stores a run; it creates and destroys real resources, so say so first. The pre-commit hook runs typecheck, lint and format check. Vitest and Stryker run on Node: never use `bun --bun` with them.
