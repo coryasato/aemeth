@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { Name, RecipeId, RunId, StepId, Version } from "../ids";
+import { Value } from "../Value";
 import { IdempotencyKey, ItemIndex } from "./idempotencyKey";
 
 /** An event's position in its run's log. The first event is 0 and each one after it adds one. */
@@ -59,6 +60,12 @@ export const MainEnded = Schema.Union([
   Schema.Struct({ result: Schema.Literal("Cancelled") }),
 ]).annotate({ identifier: "MainEnded" });
 
+/**
+ * What a run was started with, by recipe input name, in the written form of `Value`. The engine
+ * checks it against the recipe's inputs before the run starts (`inputProblems`).
+ */
+export const Inputs = Schema.Record(Name, Value).annotate({ identifier: "Inputs" });
+
 /** What every event carries, whatever it records. */
 const envelope = {
   eventSchemaVersion: Schema.Literal(1),
@@ -89,7 +96,7 @@ const gateAttempt = { step: StepId, attempt: AttemptNumber };
  * (`StepStarted.phase`), and how the main phase ended (`MainPhaseEnded`).
  */
 export const RunEvent = Schema.TaggedUnion({
-  RunStarted: { ...envelope },
+  RunStarted: { ...envelope, inputs: Inputs },
   StepStarted: {
     ...envelope,
     phase: Schema.Literals(["Main", "Finally"]),

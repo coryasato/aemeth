@@ -9,9 +9,13 @@ import { record } from "./record";
 import { secrets } from "./secrets";
 import { workers } from "./workers";
 
+export type { Block, BlockInputs, BlockOutputs, StepContext } from "./implement";
+export { BlockFailed, implement, Secrets } from "./implement";
+
 /**
  * Every block the six recipes use, as written: what each one takes, returns, touches and how it
- * is undone. There are no implementations yet; those arrive with the recipes, from M2.
+ * is undone. The implementations arrive with the recipes, from M2 Part D; `implement` is the
+ * contract they follow.
  */
 export const declarations: ReadonlyArray<Declaration> = [
   ...d1,

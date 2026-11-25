@@ -15,7 +15,7 @@ Milestone work (M0, M1, …) is done in parts, one session each. Follow the `mil
 ## Conventions
 
 - **Runtime and package manager:** Bun. Use `bun` and `bunx`, not `npm` or `pnpm`.
-- **Failures are states, not exceptions.** Model every failure as a typed error or an explicit state with a defined next move. Do not throw.
+- **Failures are states, not exceptions.** Model every failure as a typed error or an explicit state with a defined next move. Do not throw. The one exception is a test helper (a `testing/` folder, or a `*.test.ts` file), which may throw to fail the test that misused it.
 - **Make impossible states unrepresentable.** Prefer tagged unions over optional fields and booleans.
 - **Schemas are defined once** in `packages/core` and reused by the engine, the API, the UI and the tests.
 - **Messages and events are facts in the past tense** (`StepSucceeded`, `ApprovalDenied`), not commands.

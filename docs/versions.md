@@ -98,6 +98,21 @@ Details and what was run are in [milestones/m2.md](milestones/m2.md).
 - Alchemy's binding clients need a `RuntimeContext`, which a workflow's layer does not have; reading it at init with `Effect.serviceOption` and providing it works.
 - `wrangler` 4.168.0 was used in the scratch projects only. It is not a dependency.
 
+## Verified in M2 Part B (2026-11-24)
+
+No version changed, and nothing was added: `packages/core` still depends on `effect` alone, and `apps/engine` on `effect` and the two workspace packages. Read from the installed source of `effect` 4.1.5 and run in the engine's tests.
+
+- `effect/workflow` on `WorkflowEngine.layerMemory` runs the engine's whole test suite: `Workflow.make` and `toLayer`, `execute` with `discard: true` to start a run and return, `poll` to read how it ended, `Activity.make`, `DurableDeferred.await` and `succeed` with `tokenFromExecutionId`, and `DurableClock.sleep`.
+- A `DurableClock.sleep` of 60 seconds or less is an ordinary activity that sleeps on `Clock` (`InMemoryThreshold`), so the retry delays of 5 and 30 seconds move with `TestClock.adjust`.
+- An activity whose body is interrupted is run again by the activity itself, on a schedule that starts at 400 ms, under the same name and attempt. That is the in-memory stand-in for a Worker killed mid-step.
+- An activity's `execute` is an effect built once. Whatever must differ between its first run and a re-run has to be decided when it runs (`Effect.suspend`).
+- Completing a `DurableDeferred` a second time does nothing on the in-memory engine: the first result is kept.
+- `Effect.updateContext` with `Context.omit` takes services out of the context an effect runs in; `Effect.provideContext` only adds. Together they give a block the services it declared and none of the engine's.
+- `Schema.TaggedError<Self, { readonly brand: unique symbol }>()` is what `@effect/tsgo` asks for (`schemaClassMissingBrand`), and a payload field called `name` shadows the error's own (`errorPayloadShadowsName`).
+- `@effect/tsgo` reports a missing service as its own error beside TypeScript's, so `@ts-expect-error` alone does not cover a line that is meant not to compile. One comment line with both `@ts-expect-error` and `@effect-diagnostics-next-line missingEffectContext:off` does.
+- `@effect/tsgo` warns on every use of `effect/workflow` (`unstableApiUsage`). `allowedUnstableApis` in `tsconfig.base.json` allows it for `apps/engine` only, which is also the only package meant to import it.
+- `TestClock.withLive` runs an effect on the real clock inside an `it.effect` test. The workspace's `lib` has no `setTimeout`.
+
 ## Not yet verified
 
 - PlanetScale Postgres branching, before the Postgres variant of recipe 4.

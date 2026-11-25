@@ -34,7 +34,7 @@ const keyOf = (step: string, phase: string, item: number | undefined): string =>
   item === undefined ? `${runId}:${step}:${phase}` : `${runId}:${step}:${phase}:${item}`;
 const error = { name: "Broke", message: "It broke." };
 
-export const runStarted: Parts = { _tag: "RunStarted" };
+export const runStarted: Parts = { _tag: "RunStarted", inputs: {} };
 export const stepStarted = (step: string, at: Work = {}, phase = "Main"): Parts => ({
   _tag: "StepStarted",
   phase,

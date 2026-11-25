@@ -28,7 +28,17 @@ const item = { step: "deploy", item: 2, attempt: 1 };
 const whole = { step: "export", attempt: 2 };
 
 const events: ReadonlyArray<Parts> = [
-  { _tag: "RunStarted" },
+  {
+    _tag: "RunStarted",
+    inputs: {
+      production: { kind: "cloudflare.d1.database", id: "6b1f-42" },
+      stages: [10, 50, 100],
+      settle: 300_000,
+      dryRun: false,
+      plan: { name: "release", steps: ["shift", "check"] },
+    },
+  },
+  { _tag: "RunStarted", inputs: {} },
   { _tag: "StepStarted", phase: "Main", ...whole, idempotencyKey: "run-1:export:Forward" },
   { _tag: "StepStarted", phase: "Finally", ...item, idempotencyKey: "run-1:deploy:Forward:2" },
   { _tag: "StepSucceeded", ...item, outputs: { rows: 12, checksum: "ab12", tables: ["a", "b"] } },
@@ -88,7 +98,9 @@ describe("RunEvent", () => {
     ["a recipe version of 0", { recipe: { id: "restore-drill", version: 0 } }],
     ["a recipe with an unknown field", { recipe: { id: "restore-drill", version: 1, x: 1 } }],
   ])("rejects %s", (_, change) => {
-    expect(accepts(RunEvent, { ...envelope, _tag: "RunStarted", ...change })).toBe(false);
+    expect(accepts(RunEvent, { ...envelope, _tag: "RunStarted", inputs: {}, ...change })).toBe(
+      false,
+    );
   });
 
   const stepStarted = {
@@ -178,12 +190,18 @@ describe("RunEvent", () => {
 
   it("accepts the edges of what it allows", () => {
     expect(accepts(RunEvent, { ...stepStarted, attempt: 1000 })).toBe(true);
-    expect(accepts(RunEvent, { ...envelope, _tag: "RunStarted", seq: 0, at: 0 })).toBe(true);
-    expect(accepts(RunEvent, { ...envelope, _tag: "RunStarted", seq: 1_000_000_000 })).toBe(true);
-    expect(accepts(RunEvent, { ...envelope, _tag: "RunStarted", seq: 1_000_000_001 })).toBe(false);
-    expect(accepts(RunEvent, { ...envelope, _tag: "RunStarted", at: 8_640_000_000_000_001 })).toBe(
-      false,
+    expect(accepts(RunEvent, { ...envelope, _tag: "RunStarted", inputs: {}, seq: 0, at: 0 })).toBe(
+      true,
     );
+    expect(
+      accepts(RunEvent, { ...envelope, _tag: "RunStarted", inputs: {}, seq: 1_000_000_000 }),
+    ).toBe(true);
+    expect(
+      accepts(RunEvent, { ...envelope, _tag: "RunStarted", inputs: {}, seq: 1_000_000_001 }),
+    ).toBe(false);
+    expect(
+      accepts(RunEvent, { ...envelope, _tag: "RunStarted", inputs: {}, at: 8_640_000_000_000_001 }),
+    ).toBe(false);
     expect(
       accepts(RunEvent, { ...envelope, _tag: "CancellationRequested", by: "a".repeat(320) }),
     ).toBe(true);

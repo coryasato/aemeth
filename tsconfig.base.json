@@ -35,6 +35,12 @@
             "options": {
               "allowedUnstableApis": ["@effect/vitest"]
             }
+          },
+          {
+            "include": ["apps/engine/**/*.ts"],
+            "options": {
+              "allowedUnstableApis": ["effect/workflow", "@effect/vitest"]
+            }
           }
         ]
       }

@@ -1,8 +1,9 @@
 import { blockSpecs } from "@aemeth/blocks";
 import type { BlockSpec } from "@aemeth/core";
-import { decodeRecipe, validateDocument } from "@aemeth/core";
+import { decodeRecipe, followsRecipe, validateDocument } from "@aemeth/core";
+import { play, scriptOf } from "@aemeth/core/testing";
 import { describe, expect, it } from "@effect/vitest";
-import { Result } from "effect";
+import { Option, Result } from "effect";
 import committedJsonSchema from "../recipe.schema.json" with { type: "json" };
 import { recipeJsonSchema, recipeJsonSchemaText } from "./index";
 
@@ -47,6 +48,18 @@ describe("recipe files", () => {
 
     it("passes the validator: structure, types, every path and every invariant", () => {
       expect(failureOf(document)).toBe("valid");
+    });
+
+    // The engine's half of the same claim (M2 B2): `decide`, told how each step of a path turns
+    // out, takes that path and no other, and the run ends in the path's result.
+    it("is run by `decide` along every path the validator enumerates", () => {
+      const valid = Result.getOrThrow(validateDocument(document, blocks));
+      expect(valid.paths.length).toBeGreaterThan(0);
+      for (const path of valid.paths) {
+        const played = play(valid, scriptOf(valid, path));
+        expect(played._tag === "Stuck" ? played.why : played.state._tag).toBe(path.result);
+        expect(followsRecipe(valid, played.log)).toEqual(Result.succeed(Option.some(path)));
+      }
     });
   });
 
