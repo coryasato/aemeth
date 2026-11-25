@@ -118,6 +118,7 @@ Every tool above that M0 sets up works with the current stack, and none was repl
 
 - **Stryker:** TypeScript 7 has no JS API, so its tsconfig rewrite is skipped, and it runs from the repository root so relative tsconfig `extends` still resolve. `@stryker-mutator/typescript-checker` is not used. Details in [milestones/m0.md](milestones/m0.md).
 - **Vitest and Stryker run on Node,** not on the Bun runtime.
+- **The mutation run did not finish in CI on 2026-11-25:** the `check` job of the first pull request timed out at its 30 minutes inside `bun run mutate`, which takes about 14 minutes locally. Until that is settled (M2, D4), a green `check` cannot be had from CI, and the run on the owner's machine is the evidence.
 - **Test helpers are not mutated.** `packages/core/src/testing/` is left out of Stryker's `mutate` globs (M1 Part C). A full run on `packages/core` took five to seven minutes at the end of M1 Part C, nine to eleven after Part D, and takes about thirteen since M2 Part B, which added `decide` and `followsRecipe`; CI allows the whole job thirty.
 - **A brand name is invisible at runtime,** so Stryker's mutant of `Schema.brand("X")` cannot be killed. Mark it with `// Stryker disable next-line StringLiteral` and a reason; never raise `ignoreStatic` to hide it, since Schemas are static code.
 
