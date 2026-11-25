@@ -37,6 +37,6 @@ Run from this folder. Alchemy runs under Bun.
 ## Credentials
 
 - **By hand:** an Alchemy profile (`bunx alchemy profile edit --add Cloudflare`, kept in `~/.alchemy`). The OAuth login must include the **Cloudflare One / Zero Trust** scopes as well as **Developer Platform**: the stack creates an Access application and a service token.
-- **In CI:** `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` as repository secrets. The token needs, on the account: Workers Scripts Write, D1 Write, Workers R2 Storage Write, Access: Apps and Policies Write, Access: Service Tokens Write, Secrets Store Write (the state store's own secret) and Account Settings Read.
+- **In CI:** `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` as repository secrets. The token needs, on the account: Workers Scripts Write, D1 Write, Workers R2 Storage Write, Access: Apps and Policies Write, Access: Service Tokens Write, Secrets Store Write (the state store's own secret) and Account Settings Read. The first pull request passed with the owner's token; whether it has exactly these permissions was not checked from here.
 
 Deployment state is kept on the account, in the `alchemy-state-store` Worker, and shared by CI and whoever deploys by hand (M2 decision 6).

@@ -133,6 +133,7 @@ Run against the owner's Cloudflare account on a stage that was destroyed afterwa
 - `RemovalPolicy.retain` and `forceDestroy` take the stage through `Effect.map(Stack, ...)`. Not yet seen at work: nothing has been deployed to `production`.
 - `@effect/tsgo` reported `import.meta.url` as unknown only where it was written inside a resource's props; the same expression in a `const` above it is accepted.
 - `alchemy state ls --backend cloudflare` creates the state store if there is none. It is not a read.
+- The integration workflow passed in GitHub Actions on the first pull request, in about four minutes, with `CLOUDFLARE_ACCOUNT_ID` and an API token as repository secrets under `CI=true`. The permissions the token is thought to need are in [../infra/README.md](../infra/README.md).
 
 ## Not yet verified
 
@@ -140,7 +141,6 @@ Run against the owner's Cloudflare account on a stage that was destroyed afterwa
 - D1's point-in-time restore to a bookmark, which recipe 4's revert step assumes, before M7. Read in M2 Part A: it restores in place through REST or Wrangler, for 30 days on Workers Paid.
 - `@distilled.cloud/cloudflare` and the D1 REST calls from inside a Worker, in M2 Part D.
 - Why a block's span is missing from Cloudflare's traces for the first step of a run, and cut at 60 seconds with no attributes for a step that ran 90 (M2 gap 16).
-- The integration workflow in GitHub Actions, with an API token in place of the OAuth login: it has not run yet.
 - Production's data kept on destroy, in M2 Part E.
 
 ## Documentation sources
