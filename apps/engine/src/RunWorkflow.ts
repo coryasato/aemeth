@@ -25,21 +25,25 @@ import {
   validate,
   valuesOf,
 } from "@aemeth/core";
-import { Effect, Option, Result, Schema } from "effect";
+import { Duration, Effect, Option, Result, Schema } from "effect";
 import type { WorkflowEngine } from "effect/workflow";
 import { Activity, DurableClock, DurableDeferred, Workflow } from "effect/workflow";
+import { Archive, ArchiveFailed, archiveKey, archiveText } from "./Archive";
 import type { BlockResult as BlockResultType } from "./runBlock";
 import { BlockResult, runBlock } from "./runBlock";
+import type { FinalState } from "./RunIndex";
+import { IndexFailed, RunIndex } from "./RunIndex";
 import type { Fact } from "./RunLog";
-import { RunLog, RunNotFound } from "./RunLog";
+import { isFinal, RunLog, RunNotFound } from "./RunLog";
 import type { BlockServices } from "./services";
 import { Blocks, delayBefore, retryPolicy } from "./services";
 
 /**
  * A run the engine cannot take further: its log is gone, its recipe no longer validates against
- * the blocks deployed, or the log refused what the engine's own decision led to. None of these is
- * a state of the run; each is a fault in the engine or in a deploy, and the run is left as it is
- * for a person (M2, "A rejected append is an answer").
+ * the blocks deployed, the log refused what the engine's own decision led to, or the index or the
+ * archive could not be written after several tries. None of these is a state of the run; each is
+ * a fault in the engine, in a deploy or in what the engine stands on, and the run is left as it
+ * is for a person (M2, "A rejected append is an answer").
  */
 export class RunStuck extends Schema.TaggedError<RunStuck, { readonly brand: unique symbol }>()(
   "RunStuck",
@@ -53,6 +57,7 @@ export class RunStuck extends Schema.TaggedError<RunStuck, { readonly brand: uni
       "WorkLeftOpen",
       "GateWokenWhileOpen",
       "RejectedTwice",
+      "RecordFailed",
     ]),
     detail: Schema.String,
   },
@@ -69,6 +74,49 @@ export const RunWorkflow = Workflow.make("AemethRun", {
 export const gateOf = (step: string) => DurableDeferred.make(`gate/${step}`);
 
 const AppendFailed = Schema.Union([EventRejected, RunNotFound]);
+
+/**
+ * How long the workflow waits before it tries a write to the index or the archive again: six
+ * tries over about an hour, each wait on the durable clock, so the run sleeps through an outage
+ * and goes on when it is over (M2 decision 28). Only after the last is the run called stuck.
+ */
+export const recordDelays = [
+  Duration.seconds(5),
+  Duration.seconds(30),
+  Duration.minutes(2),
+  Duration.minutes(10),
+  Duration.minutes(45),
+] as const;
+
+const RecordFailed = Schema.Union([ArchiveFailed, IndexFailed, RunNotFound]);
+
+/**
+ * A write to the index or the archive, tried until it works or the delays run out. Each try is
+ * an activity of its own and each wait a durable sleep, so a replay repeats neither.
+ */
+const recorded = (
+  name: string,
+  execute: Effect.Effect<void, ArchiveFailed | IndexFailed | RunNotFound>,
+) =>
+  Effect.gen(function* () {
+    for (let attempt = 0; ; attempt += 1) {
+      const result = yield* Effect.result(
+        Activity.make({ name: `${name}/${attempt}`, error: RecordFailed, execute }),
+      );
+      if (Result.isSuccess(result)) {
+        return;
+      }
+      const delay = recordDelays[attempt];
+      // A run with no log is not waited for: no later try will find one.
+      if (delay === undefined || result.failure._tag === "RunNotFound") {
+        return yield* result.failure;
+      }
+      yield* DurableClock.sleep({ name: `${name}/wait/${attempt}`, duration: delay });
+    }
+  });
+
+const finalTag = (tag: string): tag is FinalState =>
+  tag === "Succeeded" || tag === "Failed" || tag === "Cancelled" || tag === "NeedsAttention";
 
 /** What came of acting on a decision: the run is over, a gate's wake came, or facts were appended. */
 type Acted =
@@ -108,6 +156,8 @@ const runWorkflow = ({ runId }: { readonly runId: RunId }) =>
   Effect.gen(function* () {
     const log = yield* RunLog;
     const blocks = yield* Blocks;
+    const index = yield* RunIndex;
+    const archive = yield* Archive;
     const stuck = (reason: RunStuck["reason"], detail: unknown) =>
       new RunStuck({
         runId,
@@ -126,6 +176,34 @@ const runWorkflow = ({ runId }: { readonly runId: RunId }) =>
       return yield* stuck("RecipeNoLongerValid", validated.failure);
     }
     const valid: ValidRecipe = validated.success;
+
+    // The run's row in the index, before anything else happens: a record block writes to it.
+    yield* recorded(
+      "index/started",
+      Effect.flatMap(log.read(runId), ({ events }) =>
+        index.started({
+          runId,
+          recipe: { id: document.id, version: document.version },
+          at: events[0]?.at ?? 0,
+        }),
+      ),
+    );
+
+    /**
+     * Archives a finished run: its whole log as one object, written once, then the key and the
+     * final state in the index (decision 0004). An object already at the key is the archive, so
+     * a second write is refused and counts as done.
+     */
+    const archived = (events: ReadonlyArray<RunEventType>, state: FinalState) => {
+      const key = archiveKey(runId);
+      return Effect.andThen(
+        recorded("archive", Effect.asVoid(archive.putOnce(key, archiveText(events)))),
+        recorded(
+          "index/ended",
+          index.ended({ runId, state, at: events.at(-1)?.at ?? 0, archiveKey: key }),
+        ),
+      );
+    };
 
     /** Appends a fact, and says whether the log took it. A rejection is an answer, not a failure. */
     const append = (turn: number, key: string, fact: Fact) =>
@@ -340,6 +418,10 @@ const runWorkflow = ({ runId }: { readonly runId: RunId }) =>
       const decision = decide(valid, state.success, (step) => sizeOf(valid.resolved, step, values));
       const outcome = yield* act(turn, decision, values, woken);
       if (outcome._tag === "Ended") {
+        const ended = state.success._tag;
+        if (isFinal(state.success) && finalTag(ended)) {
+          yield* archived(events, ended);
+        }
         return;
       }
       if (outcome._tag === "Woken") {
@@ -355,9 +437,14 @@ const runWorkflow = ({ runId }: { readonly runId: RunId }) =>
       refusedBefore = outcome.refused;
     }
   }).pipe(
-    Effect.catchTag("RunNotFound", () =>
-      Effect.fail(new RunStuck({ runId, reason: "LogMissing", detail: "The run has no log." })),
-    ),
+    Effect.catchTags({
+      RunNotFound: () =>
+        Effect.fail(new RunStuck({ runId, reason: "LogMissing", detail: "The run has no log." })),
+      ArchiveFailed: ({ message }) =>
+        Effect.fail(new RunStuck({ runId, reason: "RecordFailed", detail: message })),
+      IndexFailed: ({ message }) =>
+        Effect.fail(new RunStuck({ runId, reason: "RecordFailed", detail: message })),
+    }),
   );
 
 /** Registers the run workflow with whichever workflow engine is provided. */

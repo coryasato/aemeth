@@ -5,7 +5,7 @@ import { play, scriptOf } from "@aemeth/core/testing";
 import { describe, expect, it } from "@effect/vitest";
 import { Option, Result } from "effect";
 import committedJsonSchema from "../recipe.schema.json" with { type: "json" };
-import { recipeJsonSchema, recipeJsonSchemaText } from "./index";
+import { recipeFiles, recipeJsonSchema, recipeJsonSchemaText } from "./index";
 
 // Every recipe file in the package, keyed by its path from this folder.
 const files = import.meta.glob<unknown>("../*.recipe.json", { eager: true, import: "default" });
@@ -32,6 +32,16 @@ describe("recipe files", () => {
       "schema-migration.recipe.json",
       "secret-rotation.recipe.json",
     ]);
+  });
+
+  // The engine's Worker is bundled with `recipeFiles`, which names each file: a recipe added to
+  // the folder and not to that list would never reach the engine.
+  it("are all in the list the engine is bundled with, and nothing else is", () => {
+    // Both sides by file name: a recipe file is named after its id.
+    const byName = (a: string, b: string) => a.localeCompare(b);
+    expect(
+      recipeFiles.toSorted((a, b) => byName(`${a.id}.recipe.json`, `${b.id}.recipe.json`)),
+    ).toEqual(recipes.toSorted((a, b) => byName(a.name, b.name)).map((recipe) => recipe.document));
   });
 
   describe.each(recipes)("$name", ({ document, name }) => {

@@ -5,6 +5,7 @@ import { Effect, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import type { Fact } from "./index";
 import { layerMemory, RunLog } from "./index";
+import { layerSqlite } from "./testing/sqlLog";
 
 const runId = Schema.decodeSync(RunId)("run-1");
 const other = Schema.decodeSync(RunId)("run-2");
@@ -20,7 +21,10 @@ const opened = Effect.gen(function* () {
   return log;
 });
 
-describe("the run log, in memory", () => {
+describe.each([
+  ["in memory", layerMemory],
+  ["on SQLite, as the log entity keeps it", layerSqlite],
+])("the run log, %s", (_name, layer) => {
   it.effect("gives each event its run, its recipe, the next seq and the time", () =>
     Effect.gen(function* () {
       const log = yield* opened;
@@ -41,7 +45,7 @@ describe("the run log, in memory", () => {
       const record = yield* log.read(runId);
       expect(record.events).toEqual([first, second]);
       expect(record.state).toMatchObject({ _tag: "Finalizing", main: "Succeeded" });
-    }).pipe(Effect.provide(layerMemory)),
+    }).pipe(Effect.provide(layer)),
   );
 
   it.effect("stores nothing for a fact that does not fit, and says why", () =>
@@ -59,7 +63,7 @@ describe("the run log, in memory", () => {
       // The key of a rejected fact is still free.
       yield* log.append(runId, started, "started");
       expect(yield* log.append(runId, mainEnded, "main-ended")).toMatchObject({ seq: 1 });
-    }).pipe(Effect.provide(layerMemory)),
+    }).pipe(Effect.provide(layer)),
   );
 
   it.effect("appends once for a key, and answers the repeat with the stored event", () =>
@@ -71,7 +75,7 @@ describe("the run log, in memory", () => {
       expect(yield* log.append(runId, started, "started")).toEqual(first);
       expect(yield* log.append(runId, mainEnded, "started")).toEqual(first);
       expect((yield* log.read(runId)).events).toEqual([first]);
-    }).pipe(Effect.provide(layerMemory)),
+    }).pipe(Effect.provide(layer)),
   );
 
   it.effect("keeps each run's log apart, and the recipe a run was opened with", () =>
@@ -88,7 +92,7 @@ describe("the run log, in memory", () => {
       yield* log.open(runId, recipe({ id: "changed", start: "a", nodes: [step("a", "t.act")] }));
       expect(yield* log.recipe(runId)).toEqual(document);
       expect((yield* log.read(runId)).events).toHaveLength(1);
-    }).pipe(Effect.provide(layerMemory)),
+    }).pipe(Effect.provide(layer)),
   );
 
   it.effect("knows nothing of a run that was never opened", () =>
@@ -100,7 +104,7 @@ describe("the run log, in memory", () => {
       expect(yield* Effect.flip(log.append(runId, started, "started"))).toMatchObject(missing);
       expect(yield* Effect.flip(log.putSecret(runId, "export", "link"))).toMatchObject(missing);
       expect(yield* Effect.flip(log.secret(runId, "export"))).toMatchObject(missing);
-    }).pipe(Effect.provide(layerMemory)),
+    }).pipe(Effect.provide(layer)),
   );
 
   it.effect("keeps a run's secrets outside its events, until the run ends", () =>
@@ -121,6 +125,6 @@ describe("the run log, in memory", () => {
       yield* log.append(runId, ended, "ended");
       expect(yield* log.secret(runId, "export")).toEqual(Option.none());
       expect(yield* log.secret(runId, "token")).toEqual(Option.none());
-    }).pipe(Effect.provide(layerMemory)),
+    }).pipe(Effect.provide(layer)),
   );
 });

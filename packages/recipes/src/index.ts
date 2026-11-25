@@ -2,6 +2,8 @@ import { Recipe } from "@aemeth/core";
 import type { JsonSchema } from "effect";
 import { Schema } from "effect";
 
+export { recipeFiles } from "./files";
+
 /**
  * The JSON Schema for a recipe file, generated from the `Recipe` Schema as a standalone
  * draft 2020-12 document. It is for editors and outside tools: the Effect decoder stays the

@@ -1,5 +1,42 @@
 # infra
 
-The Alchemy stack that declares everything Aemeth deploys: the engine Worker, its Durable Objects, the D1 index, the web app and Cloudflare Access.
+The Alchemy stack that declares everything Aemeth deploys. In M2 that is the engine: the Worker, the four Durable Object classes of its cluster, the D1 index with its migrations, the R2 archive, and the Cloudflare Access application in front, with the service token CI calls it by. The web app joins in M3, and the seeded sample database the restore drill runs on in M2 Part D.
 
-Also declares the seeded sample D1 database used by the restore drill until a real target is chosen.
+- `alchemy.run.ts`: the stack. The Worker and the resources it binds are declared beside the engine's code, in [`apps/engine/src/cloudflare`](../apps/engine/src/cloudflare); the stack puts them together and returns the Worker's URL and the service token.
+- `test/engine.integ.ts`: the integration suite. It deploys the stack to a stage, drives the deployed engine over HTTP, and destroys the stage.
+- `vitest.integration.config.ts`: the Vitest project of that suite. It is not part of `bun run test`.
+
+## Stages
+
+One stack, three kinds of stage. Every resource carries its stage in its name.
+
+| Stage | What it is | Durable Objects take new code | Data on destroy | Fixtures |
+|---|---|---|---|---|
+| `production` | The real one | when idle, within five minutes | kept | no |
+| `staging` | What production operates first ([decision 0008](../docs/decisions/0008-out-of-band-path.md)) | when idle, within five minutes | destroyed | no |
+| `pr-<number>`, `test_<name>` | Thrown away after a pull request or a test run | at once | destroyed | yes |
+
+A deploy to a stage with any other name is refused: a slip such as `prod` is not a stage.
+
+The fixtures are two fake blocks, a recipe of them (`test-gated`) and two routes under `/test`, which let the integration suite take a run through a gate, a deploy and a kill, and read what the engine keeps outside a run's log. They are in [`apps/engine/src/cloudflare/fixtures.ts`](../apps/engine/src/cloudflare/fixtures.ts).
+
+## Commands
+
+Run from this folder. Alchemy runs under Bun.
+
+| Command | What it does |
+|---|---|
+| `bunx alchemy plan --stage <stage>` | Shows what a deploy would change. Changes nothing |
+| `bunx alchemy deploy --stage <stage>` | Deploys the stage. This is also the out-of-band path of [decision 0008](../docs/decisions/0008-out-of-band-path.md) |
+| `bunx alchemy destroy --stage <stage>` | Destroys the stage and, except in `production`, its data |
+| `bun run test:integration` (from the repository root) | Deploys `$ALCHEMY_TEST_STAGE`, or `test_$USER`, runs the suite and destroys the stage: about four minutes. `NO_DESTROY=1` keeps the stage |
+| `ALCHEMY_DEV=1 bun run test:integration` | The same suite on local emulators, in about 30 seconds. There is no Access and no deploy that kills a Durable Object locally, so the two tests of those are skipped. It still creates, and deletes, the real service token |
+
+`AEMETH_OWNER_EMAIL`, read when the stack is deployed, is the person Access lets in besides the service token. It is not in the repository. Without it only the service token gets through.
+
+## Credentials
+
+- **By hand:** an Alchemy profile (`bunx alchemy profile edit --add Cloudflare`, kept in `~/.alchemy`). The OAuth login must include the **Cloudflare One / Zero Trust** scopes as well as **Developer Platform**: the stack creates an Access application and a service token.
+- **In CI:** `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` as repository secrets. The token needs, on the account: Workers Scripts Write, D1 Write, Workers R2 Storage Write, Access: Apps and Policies Write, Access: Service Tokens Write, Secrets Store Write (the state store's own secret) and Account Settings Read.
+
+Deployment state is kept on the account, in the `alchemy-state-store` Worker, and shared by CI and whoever deploys by hand (M2 decision 6).

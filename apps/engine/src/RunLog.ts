@@ -63,7 +63,8 @@ export class RunLog extends Context.Service<
   }
 >()("@aemeth/engine/RunLog") {}
 
-type Entry = {
+/** Everything the log holds of one run. */
+export type Entry = {
   readonly recipe: Recipe;
   readonly events: ReadonlyArray<RunEvent>;
   readonly state: RunState;
@@ -71,7 +72,8 @@ type Entry = {
   readonly secrets: ReadonlyMap<string, string>;
 };
 
-const isFinal = (state: RunState): boolean =>
+/** Whether a run in this state is over. */
+export const isFinal = (state: RunState): boolean =>
   state._tag === "Succeeded" ||
   state._tag === "Failed" ||
   state._tag === "Cancelled" ||
@@ -79,13 +81,85 @@ const isFinal = (state: RunState): boolean =>
 
 const decodeEvent = Schema.decodeUnknownResult(RunEvent, { onExcessProperty: "error" });
 
-const empty = (recipe: Recipe): Entry => ({
+/** The log of a run nothing has happened to yet. */
+export const emptyEntry = (recipe: Recipe): Entry => ({
   recipe,
   events: [],
   state: notStarted,
   byKey: new Map(),
   secrets: new Map(),
 });
+
+/**
+ * What came of one append. `Stored` holds the run as it is now, for whoever keeps it to keep;
+ * `Known` is a fact stored before under the same key; `Malformed` is a fact the engine built
+ * wrongly, which is the engine's bug and not a state of the run.
+ */
+export type Appended =
+  | { readonly _tag: "Stored"; readonly event: RunEvent; readonly entry: Entry }
+  | { readonly _tag: "Known"; readonly event: RunEvent }
+  | { readonly _tag: "Rejected"; readonly rejected: EventRejected }
+  | { readonly _tag: "Malformed"; readonly issue: unknown };
+
+/**
+ * One append, as every log does it, in memory or in a Durable Object: the fact gets the next
+ * `seq` and the time, `transition` decides whether it fits, and a run that ends loses its
+ * secrets. Pure: storing the result is the caller's.
+ */
+export const appendTo = (
+  entry: Entry,
+  runId: RunId,
+  fact: { readonly [field: string]: Schema.Json },
+  dedupeKey: string,
+  at: number,
+): Appended => {
+  const known = entry.byKey.get(dedupeKey);
+  if (known !== undefined) {
+    return { _tag: "Known", event: known };
+  }
+  const event = decodeEvent({
+    ...fact,
+    eventSchemaVersion: 1,
+    runId,
+    seq: entry.events.length,
+    at,
+    recipe: { id: entry.recipe.id, version: entry.recipe.version },
+  });
+  if (Result.isFailure(event)) {
+    return { _tag: "Malformed", issue: event.failure };
+  }
+  const next = transition(entry.state, event.success);
+  if (Result.isFailure(next)) {
+    return { _tag: "Rejected", rejected: next.failure };
+  }
+  return {
+    _tag: "Stored",
+    event: event.success,
+    entry: {
+      recipe: entry.recipe,
+      events: [...entry.events, event.success],
+      state: next.success,
+      byKey: new Map([...entry.byKey, [dedupeKey, event.success]]),
+      secrets: isFinal(next.success) ? new Map() : entry.secrets,
+    },
+  };
+};
+
+/** The result of an append as the `RunLog` service gives it. */
+export const appendedEffect = (appended: Appended): Effect.Effect<RunEvent, EventRejected> => {
+  switch (appended._tag) {
+    case "Stored":
+    case "Known": {
+      return Effect.succeed(appended.event);
+    }
+    case "Rejected": {
+      return Effect.fail(appended.rejected);
+    }
+    case "Malformed": {
+      return Effect.die(appended.issue);
+    }
+  }
+};
 
 /** The log kept in memory: what the tests run on, with the same rules as the entity. */
 export const layerMemory: Layer.Layer<RunLog> = Layer.effect(RunLog)(
@@ -101,7 +175,7 @@ export const layerMemory: Layer.Layer<RunLog> = Layer.effect(RunLog)(
     const withEntry = (all: ReadonlyMap<RunId, Entry>, runId: RunId, entry: Entry) =>
       new Map([...all, [runId, entry]]);
 
-    type Appended = Effect.Effect<RunEvent, EventRejected | RunNotFound>;
+    type Appending = Effect.Effect<RunEvent, EventRejected | RunNotFound>;
     /** One append, start to finish: an entity handles one request at a time, and so does this. */
     const append = (
       all: ReadonlyMap<RunId, Entry>,
@@ -109,40 +183,15 @@ export const layerMemory: Layer.Layer<RunLog> = Layer.effect(RunLog)(
       fact: Fact,
       dedupeKey: string,
       at: number,
-    ): readonly [Appended, ReadonlyMap<RunId, Entry>] => {
+    ): readonly [Appending, ReadonlyMap<RunId, Entry>] => {
       const entry = all.get(runId);
       if (entry === undefined) {
         return [Effect.fail(new RunNotFound({ runId })), all];
       }
-      const stored = entry.byKey.get(dedupeKey);
-      if (stored !== undefined) {
-        return [Effect.succeed(stored), all];
-      }
-      const event = decodeEvent({
-        ...fact,
-        eventSchemaVersion: 1,
-        runId,
-        seq: entry.events.length,
-        at,
-        recipe: { id: entry.recipe.id, version: entry.recipe.version },
-      });
-      if (Result.isFailure(event)) {
-        // A fact the engine built wrongly is the engine's bug, not a state of the run.
-        return [Effect.die(event.failure), all];
-      }
-      const next = transition(entry.state, event.success);
-      if (Result.isFailure(next)) {
-        return [Effect.fail(next.failure), all];
-      }
+      const appended = appendTo(entry, runId, fact, dedupeKey, at);
       return [
-        Effect.succeed(event.success),
-        withEntry(all, runId, {
-          recipe: entry.recipe,
-          events: [...entry.events, event.success],
-          state: next.success,
-          byKey: new Map([...entry.byKey, [dedupeKey, event.success]]),
-          secrets: isFinal(next.success) ? new Map() : entry.secrets,
-        }),
+        appendedEffect(appended),
+        appended._tag === "Stored" ? withEntry(all, runId, appended.entry) : all,
       ];
     };
 
@@ -166,7 +215,9 @@ export const layerMemory: Layer.Layer<RunLog> = Layer.effect(RunLog)(
 
     return RunLog.of({
       open: (runId, recipe) =>
-        Ref.update(runs, (all) => (all.has(runId) ? all : withEntry(all, runId, empty(recipe)))),
+        Ref.update(runs, (all) =>
+          all.has(runId) ? all : withEntry(all, runId, emptyEntry(recipe)),
+        ),
       recipe: (runId) => Effect.map(entryOf(runId), (entry) => entry.recipe),
       append: (runId, fact, dedupeKey) =>
         Effect.flatMap(Clock.currentTimeMillis, (at) =>

@@ -1,6 +1,6 @@
 # Versions
 
-Verified on 2026-11-23 and re-checked in M1 Part A the same day and in M2 Part A on 2026-11-24, with no change. M1 changed no version. The tooling rows, Foldkit and its Vite plugin were also installed and run in M0 Part A. Use the latest release that satisfies every constraint here, pin exact versions, and update this file when anything changes.
+Verified on 2026-11-23 and re-checked in M1 Part A the same day, in M2 Part A on 2026-11-24 and in M2 Part C on 2026-11-25, with no change. M1 changed no version. The tooling rows, Foldkit and its Vite plugin were also installed and run in M0 Part A. Use the latest release that satisfies every constraint here, pin exact versions, and update this file when anything changes.
 
 ## Verified
 
@@ -8,7 +8,11 @@ Verified on 2026-11-23 and re-checked in M1 Part A the same day and in M2 Part A
 |---|---|---|
 | `effect` | 4.1.5 | Stable since 4.0.0 on 2026-10-01 |
 | `alchemy` | 2.0.0-beta.87 | Beta, breaking changes expected. Peer: `effect ^4.1.4` |
-| `@alchemy.run/cloudflare` | 2.0.0-beta.87 | Alchemy's Cloudflare provider, a separate package. Peers: `alchemy` at the same version, `effect ^4.1.4`, `@effect/platform-bun`, `@effect/platform-node`, `vite ^7 \|\| ^8`. Not installed in the repository until M2 Part C |
+| `@alchemy.run/cloudflare` | 2.0.0-beta.87 | Alchemy's Cloudflare provider, a separate package. Peers: `alchemy` at the same version, `effect ^4.1.4`, `@effect/platform-bun`, `@effect/platform-node`, `vite ^7 \|\| ^8`. A dependency of `apps/engine` and `infra` since M2 Part C |
+| `@alchemy.run/test` | 2.0.0-beta.87 | Alchemy's test harness: deploys a stack to a stage, runs a suite, destroys it. Used through its Vitest adapter, on Node. Dev dependency of `infra` |
+| `@effect/platform-bun`, `@effect/platform-node` | 4.1.5 | Peers of the Alchemy provider; nothing here imports them |
+| `@effect/sql-sqlite-node` | 4.1.5 | SQLite through Node's own `node:sqlite`, no native build. Dev dependency of `apps/engine`: the engine's SQL log is tested on it |
+| `@cloudflare/workers-types` | 5.20261125.1 | The Workers runtime's global types, for `apps/engine` and `infra`. The same version the Alchemy provider brings in |
 | `@distilled.cloud/cloudflare` | 1.0.0-rc.20 | An Effect client for the Cloudflare REST API, a dependency of the provider. Candidate for the D1 blocks; not yet run in a Worker |
 | `foldkit` | 0.171.0 | npm release matches the main branch. Peer: `effect ~4.1.0` |
 | `@foldkit/vite-plugin` | 0.29.1 | Peer: `vite ^8` |
@@ -39,6 +43,8 @@ Verified on 2026-11-23 and re-checked in M1 Part A the same day and in M2 Part A
 - **Vitest and Stryker run on Node.** `bun --bun vitest` fails to start its workers. Node 22.18 or later is required (the Oxlint preset loads `oxlint.config.ts` with Node); Node 26 is used.
 - **`alchemy` and `@alchemy.run/cloudflare` move together,** at the same exact version, inside the range `@effect/platform-cloudflare` accepts.
 - **Alchemy's Cloudflare login is its own.** A profile in `~/.alchemy`, or `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` under `CI=true`. Wrangler's login is not used.
+- **`@effect/platform-cloudflare` is imported by module, never by its index,** in anything the stack loads. The index also loads `CloudflareTracer`, which imports `cloudflare:workers` and so fails wherever the stack is planned (Bun or Node). That tracer is loaded with a dynamic `import()` inside the deployed Worker.
+- **Alchemy's OAuth login cannot be made from a command without a terminal** (`NonInteractiveTerminal`), and `profile edit --add` refuses a provider that is already connected: use `--reconfigure`, in a real terminal. Access needs the Cloudflare One / Zero Trust scopes.
 - **TypeScript 7 has no JS API.** Tools that call it (Stryker's tsconfig rewrite, `@stryker-mutator/typescript-checker`) need a workaround or are not used.
 
 ## Verified in M0 Part A (2026-11-23)
@@ -113,14 +119,29 @@ No version changed, and nothing was added: `packages/core` still depends on `eff
 - `@effect/tsgo` warns on every use of `effect/workflow` (`unstableApiUsage`). `allowedUnstableApis` in `tsconfig.base.json` allows it for `apps/engine` only, which is also the only package meant to import it.
 - `TestClock.withLive` runs an effect on the real clock inside an `it.effect` test. The workspace's `lib` has no `setTimeout`.
 
+## Verified in M2 Part C (2026-11-25)
+
+Run against the owner's Cloudflare account on a stage that was destroyed afterwards; details in [milestones/m2.md](milestones/m2.md).
+
+- The Worker bundles from this workspace's packages (`workspace:*`, TypeScript sources, JSON recipe files) with `main: import.meta.url` in `apps/engine` and the stack in `infra`. A first deploy of the whole stage takes about 15 seconds, a redeploy about 8.
+- The class form `Cloudflare.Worker<Self>()(id, props, init)` takes props as an Effect that needs `Stack` and yields other resources; the plain call form does not. `env` on the props binds plain variables, read at run time from `Cloudflare.WorkerEnvironment`. A resource's props may be an Effect too.
+- `@alchemy.run/test/Vitest` works with Vitest 5 on Node: `deploy(Stack)` in `beforeAll`, again inside a test, and `destroy(Stack)` in `afterAll`. Its `executeWhenReady` retries every 404, so it is no use against an API whose own answers include 404.
+- The Worker's `access` prop with an email policy and a `non_identity` policy for a `Cloudflare.Access.ServiceToken` works. **Access is not in force the moment it is deployed:** for some seconds after a stage is created, and once seen just after a redeploy, a request reaches the Worker with `ctx.access` undefined.
+- `ctx.access.getIdentity()` returns nothing for a service token. Its client id is the `common_name` claim of the `Cf-Access-Jwt-Assertion` header.
+- An entity on `DurableObjectSqlClient` keeps a run's log across deploys and a kill; `Schema.Option` and a `Schema.Union` of errors travel through an entity's RPCs.
+- `Cloudflare.Telemetry()` records Effect spans of a request only. Spans from the cluster's Durable Objects are recorded once `CloudflareTracer.layer` of `@effect/platform-cloudflare` is provided to the cluster's layer. They are in the `otel` dataset of the Workers Observability query API (`.../workers/observability/telemetry/query`), beside the platform's own (`sqlite`, `d1_run`, `r2_put`).
+- `RemovalPolicy.retain` and `forceDestroy` take the stage through `Effect.map(Stack, ...)`. Not yet seen at work: nothing has been deployed to `production`.
+- `@effect/tsgo` reported `import.meta.url` as unknown only where it was written inside a resource's props; the same expression in a `const` above it is accepted.
+- `alchemy state ls --backend cloudflare` creates the state store if there is none. It is not a read.
+
 ## Not yet verified
 
 - PlanetScale Postgres branching, before the Postgres variant of recipe 4.
 - D1's point-in-time restore to a bookmark, which recipe 4's revert step assumes, before M7. Read in M2 Part A: it restores in place through REST or Wrangler, for 30 days on Workers Paid.
-- Cloudflare Access in front of the Worker through Alchemy's `access` prop, in M2 Part C. The first tries failed on the account's permissions, not on the feature.
 - `@distilled.cloud/cloudflare` and the D1 REST calls from inside a Worker, in M2 Part D.
-- `Cloudflare.Telemetry()` and a span per step in Cloudflare's traces, in M2 Part C.
-- `@alchemy.run/test` with Vitest 5, and the Worker bundle built from workspace packages, in M2 Part C.
+- Why a block's span is missing from Cloudflare's traces for the first step of a run, and cut at 60 seconds with no attributes for a step that ran 90 (M2 gap 16).
+- The integration workflow in GitHub Actions, with an API token in place of the OAuth login: it has not run yet.
+- Production's data kept on destroy, in M2 Part E.
 
 ## Documentation sources
 

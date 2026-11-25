@@ -20,7 +20,9 @@ Most code in this repository is written by coding agents, so correctness has to 
 | CI | GitHub Actions | All of the above on every push |
 | Engine decisions | `decide` played against scripted outcomes over generated recipes and over the six recipe files, each log checked by `transition` and by `followsRecipe` against the validator's paths | `packages/core`, `packages/recipes` |
 | Block services | A block's code is typed to need exactly the services it lists; a use of another is kept in a test as an expected compile error, and at run time the engine withholds it | `packages/blocks`, `apps/engine` |
-| Integration | A temporary Alchemy stack per pull request, destroyed afterwards | `apps/engine`, `infra` |
+| Integration | A temporary Alchemy stack per pull request, destroyed afterwards: `bun run test:integration` deploys a stage, drives the deployed engine over HTTP through Access, and destroys the stage | `apps/engine`, `infra` |
+| Archive | A finished run has one object in the archive, its whole log, which replays through `transition` to the state the index records; checked at the end of every engine test, and on the deployed stage | `apps/engine` |
+| Log storage | The log's tests run against the in-memory log and against the SQL log the Worker uses, on Node's SQLite | `apps/engine` |
 | Tracing | Effect spans recorded in Cloudflare's trace of each invocation, which Cloudflare can export over OTLP; one span per execution of a block, checked with an in-memory tracer at the end of every engine test | `apps/engine` |
 
 ## Property tests
@@ -61,6 +63,15 @@ Found in M2 Part B, on `decide`:
 - **Bound what a property does when the code under it is wrong.** A mutant of the path walk can give a recipe ten thousand paths, and a mutant of `decide` a run that never ends. The path property refuses a recipe with more than 1,000 paths, ten times the most seen, and the player stops after 400 decisions.
 - **A test that walks a million items is a slow mutation run.** A test of the longest list a for-each can run over checked a million items twice, and the next mutation run had a hundred timeouts again. An array of that length with nothing in it tests the same bound in four milliseconds.
 - **A test double that decides once is not a retry.** An effect built once and run twice makes the same choice twice. A fault meant to happen "the first time" has to be chosen when the effect runs.
+
+Found in M2 Part C, on the deployed engine:
+
+- **Run a rail's check after every test, not in a test of its own.** The archive check runs at the end of each of the engine's tests, for every run the test started. Planted twice: archiving the log without its first event failed 45 tests, and archiving only failed runs failed 32.
+- **One implementation of the rules, two stores.** `appendTo` decides an append for the in-memory log and for the SQL log, and the same six tests run against both, so the store the Worker uses is tested without a Worker.
+- **Make a test double answer what the real thing answers.** The fixture recipe first gave a step a literal `Duration`, which the validator refuses; a unit test that validates the fixture found it before any deploy did.
+- **A deployed test must be able to tell the engine's "no" from the platform's.** Alchemy's `executeWhenReady` retries every 404 as a cold start, and the engine answers 404 for a run it does not know: the suite hung for six minutes. The suite waits for the stage once, then retries nothing but the one answer that means "Access is not in front yet".
+- **Let the thing under test say how often it ran.** The fake block counts its executions in the run's secrets and returns the count, so "the step ran twice and the log shows one attempt" is read off the log, with no second channel.
+- **Do not trust a propagation delay to be over.** Access was seen missing in front of the Worker seconds after a stage was created and again after a redeploy. The engine refuses a request with no identity by itself, and the suite checks that a stranger is never served either way.
 
 ## Invariants
 
@@ -110,4 +121,4 @@ Every tool above that M0 sets up works with the current stack, and none was repl
 - **Test helpers are not mutated.** `packages/core/src/testing/` is left out of Stryker's `mutate` globs (M1 Part C). A full run on `packages/core` took five to seven minutes at the end of M1 Part C, nine to eleven after Part D, and takes about thirteen since M2 Part B, which added `decide` and `followsRecipe`; CI allows the whole job thirty.
 - **A brand name is invisible at runtime,** so Stryker's mutant of `Schema.brand("X")` cannot be killed. Mark it with `// Stryker disable next-line StringLiteral` and a reason; never raise `ignoreStatic` to hide it, since Schemas are static code.
 
-Story and Scene tests, per-PR integration stacks and tracing arrive with M2 and M3. How M2 builds its rails is in [milestones/m2.md](milestones/m2.md). Items still to verify are under "Not yet verified" in [versions.md](versions.md).
+Story and Scene tests arrive with M3. The integration rail and tracing were built in M2 Part C: the suite is `infra/test/engine.integ.ts`, CI runs it in `.github/workflows/integration.yml` for each pull request, and it is not part of `bun run check`, since it needs a Cloudflare account and takes about four minutes. How M2 builds its rails is in [milestones/m2.md](milestones/m2.md). Items still to verify are under "Not yet verified" in [versions.md](versions.md).

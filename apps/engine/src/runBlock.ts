@@ -136,9 +136,13 @@ export const runBlock = (
       Effect.catchDefect((defect) => Effect.succeed(failed("BlockDefect", String(defect)))),
       Effect.withSpan(`block ${block.spec.id}`, {
         attributes: {
+          // Left out when the work is not an item of a for-each: a tracer writes `undefined` down.
+          ...Option.match(step.item, {
+            onNone: () => ({}),
+            onSome: (item) => ({ "aemeth.item": item }),
+          }),
           "aemeth.run": step.runId,
           "aemeth.step": step.step,
-          "aemeth.item": Option.getOrUndefined(step.item),
           "aemeth.phase": step.phase,
           "aemeth.attempt": step.attempt,
           "aemeth.idempotencyKey": step.idempotencyKey,
