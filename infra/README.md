@@ -1,6 +1,6 @@
 # infra
 
-The Alchemy stack that declares everything Aemeth deploys. In M2 that is the engine: the Worker, the four Durable Object classes of its cluster, the D1 index with its migrations, the R2 archive, and the Cloudflare Access application in front, with the service token CI calls it by. The web app joins in M3, and the seeded sample database the restore drill runs on later in M2 Part D.
+The Alchemy stack that declares everything Aemeth deploys. In M2 that is the engine: the Worker, the four Durable Object classes of its cluster, the D1 index with its migrations, the R2 archive, and the Cloudflare Access application in front, with the service token CI calls it by. A stage that is thrown away also has the seeded sample database the restore drill runs on in the integration suite (`apps/engine/sample`). The web app joins in M3.
 
 - `alchemy.run.ts`: the stack. The Worker and the resources it binds are declared beside the engine's code, in [`apps/engine/src/cloudflare`](../apps/engine/src/cloudflare); the stack puts them together and returns the Worker's URL and the service token.
 - `test/engine.integ.ts`: the integration suite. It deploys the stack to a stage, drives the deployed engine over HTTP, and destroys the stage.

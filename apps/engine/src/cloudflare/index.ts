@@ -1,3 +1,3 @@
-export { RecordResponse } from "./fixtures";
-export { ArchiveBucket, CiToken, Index } from "./resources";
+export { RecordResponse, StepMarks } from "./fixtures";
+export { ArchiveBucket, CiToken, currentStage, Index, SampleDatabase } from "./resources";
 export { default as EngineWorker } from "./Worker";

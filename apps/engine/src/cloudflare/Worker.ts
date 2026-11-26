@@ -18,7 +18,7 @@ import { RunIndex } from "../RunIndex";
 import { RunWorkflowLayer } from "../RunWorkflow";
 import type { Offer } from "../services";
 import { Blocks, BlockServices, d1Offer, Recipes, runRecordOffer, secretsOffer } from "../services";
-import { fixtureApi, fixtureBlocks, fixtureRecipes } from "./fixtures";
+import { faultyDrill, fixtureApi, fixtureBlocks, fixtureRecipes } from "./fixtures";
 import type { WithHost } from "./records";
 import { archiveOn, indexOn } from "./records";
 import { ArchiveBucket, CiToken, currentStage, Index } from "./resources";
@@ -191,7 +191,10 @@ export default class EngineWorker extends Cloudflare.Worker<EngineWorker>()(
       onSome: ({ check, context }) => Effect.provideContext(identityUnder(check), context),
     });
 
-    const blocks = [...(yield* drillBlocks), ...(fixtures ? yield* fixtureBlocks : [])];
+    const archive = archiveOn(bucket, withHost);
+    // A stage that is thrown away runs the drill under the fault a test sets for a run (D3).
+    const drill = yield* drillBlocks;
+    const blocks = fixtures ? [...faultyDrill(drill, archive), ...(yield* fixtureBlocks)] : drill;
 
     // The drill's D1 API, when the stage has the engine's token. Alchemy binds the account's id.
     const textOf = (name: string): string | undefined => {
@@ -210,7 +213,7 @@ export default class EngineWorker extends Cloudflare.Worker<EngineWorker>()(
               ),
             ),
           ];
-    const recipes = [...recipeFiles, ...(fixtures ? fixtureRecipes : [])];
+    const recipes = [...recipeFiles, ...(fixtures ? yield* fixtureRecipes : [])];
 
     const index = indexOn(database, withHost);
     const services = Layer.mergeAll(
@@ -219,7 +222,7 @@ export default class EngineWorker extends Cloudflare.Worker<EngineWorker>()(
         Recipes,
         Recipes.of({ find: (id) => Effect.sync(() => recipes.find((each) => each.id === id)) }),
       ),
-      Layer.succeed(Archive, archiveOn(bucket, withHost)),
+      Layer.succeed(Archive, archive),
       Layer.succeed(RunIndex, index),
       Layer.effect(BlockServices)(
         Effect.gen(function* () {

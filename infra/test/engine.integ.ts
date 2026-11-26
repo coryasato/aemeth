@@ -8,11 +8,13 @@ import {
   RunResponse,
   StartedResponse,
 } from "@aemeth/engine";
-import { RecordResponse } from "@aemeth/engine/cloudflare";
+import { RecordResponse, StepMarks } from "@aemeth/engine/cloudflare";
 import * as Cloudflare from "@alchemy.run/cloudflare";
+import { withProviders } from "@alchemy.run/test/Core";
 import * as Test from "@alchemy.run/test/Vitest";
+import * as d1 from "@distilled.cloud/cloudflare/d1";
 import { expect } from "@effect/vitest";
-import { Effect, Redacted, Result, Schedule, Schema } from "effect";
+import { Effect, Redacted, Result, Schedule, Schema, Stream } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 import Stack from "../alchemy.run";
 
@@ -21,16 +23,17 @@ import Stack from "../alchemy.run";
 // stands in front of it, that a run survives a deploy at its gate and a kill in the middle of a
 // step with each event in its log once, and that a finished run is archived and indexed.
 //
+// Since Part D it also runs the restore drill against the stage's seeded sample database, with
+// the engine's own D1 token: export, a temporary database, restore, check, destroy, record.
+//
 // The stage is `$ALCHEMY_TEST_STAGE` (`pr-<number>` in CI), or `test_$USER`. With
 // `ALCHEMY_DEV=1` the same suite runs on local emulators, where there is no Access and a deploy
 // does not kill a Durable Object, so the tests of those two are skipped there.
 
 const local = process.env["ALCHEMY_DEV"] === "1" || process.env["ALCHEMY_TEST_DEV"] === "1";
 
-const { test, beforeAll, afterAll, deploy, destroy } = Test.make({
-  providers: Cloudflare.providers(),
-  state: Cloudflare.state(),
-});
+const options = { providers: Cloudflare.providers(), state: Cloudflare.state() };
+const { test, beforeAll, afterAll, deploy, destroy } = Test.make(options);
 
 /** Deploys the stack as a new build: the same code, and still a deploy. */
 const deployed = (build: number) =>
@@ -43,6 +46,24 @@ const stack = beforeAll(deployed(1), { timeout: 600_000 });
 
 /** How many requests without credentials reached the Worker: Access was not in front of it. */
 let seenWithoutAccess = 0;
+
+/** Every run of the drill this suite started. */
+const drillRuns = new Set<string>();
+
+// A test that fails can leave a run in the middle of the drill when the stage is destroyed, and
+// its temporary database is no resource of the stage's. Once the stage is gone, and its runs with
+// it, the databases named for this suite's runs are deleted, and no other: the account may hold
+// other stages' drills. Hooks run last first, so this one is above the destroy.
+afterAll(
+  Effect.gen(function* () {
+    const left = (yield* databases).filter((each) =>
+      [...drillRuns].some((runId) => each.name.includes(runId)),
+    );
+    yield* Effect.logInfo(`Temporary databases left by the suite's runs: ${left.length}`);
+    yield* Effect.forEach(left, (each) => deleteDatabase(each.id), { discard: true });
+  }),
+  { timeout: 120_000 },
+);
 
 afterAll.skipIf(process.env["NO_DESTROY"] === "1")(destroy(Stack), { timeout: 600_000 });
 afterAll(
@@ -87,16 +108,27 @@ const once = (
   });
 
 /**
+ * Whether Cloudflare answered for a Worker it could not run: its own error page, not the
+ * engine's JSON. For a moment after an immediate deploy, a request can land on a Worker that is
+ * changing its code.
+ */
+const cloudflareError = (answer: Answer): boolean =>
+  answer.status >= 500 && !answer.text.trimStart().startsWith("{");
+
+/**
  * One request to the deployed engine. Access is not always in front of the Worker: for some
  * seconds after a stage is created, and now and then around a deploy, a request arrives with no
  * identity, and the engine itself refuses it (`NoIdentity`). That is the engine doing its part;
- * for a caller with the token it means "not yet", so it is asked again, for up to a minute.
+ * for a caller with the token it means "not yet", so it is asked again, for up to a minute. So
+ * is Cloudflare's own error page around a deploy, to a read: a write it cut off may have landed.
  */
 const call: typeof once = (method, path, options = {}) =>
   once(method, path, options).pipe(
     Effect.repeat({
       schedule: Schedule.spaced("2 seconds"),
-      until: (answer) => options.anonymous === true || !answer.text.includes("NoIdentity"),
+      until: (answer) =>
+        options.anonymous === true ||
+        (!answer.text.includes("NoIdentity") && !(method === "GET" && cloudflareError(answer))),
       times: 30,
     }),
   );
@@ -261,6 +293,104 @@ test(
   }),
 );
 
+/**
+ * Every D1 database on the account, as Cloudflare lists them to the deploy's own credentials:
+ * not through the engine, whose cleanup is what is being checked.
+ */
+const databases = withProviders(
+  Effect.gen(function* () {
+    const { accountId } = yield* yield* Cloudflare.CloudflareEnvironment;
+    const found = yield* Stream.runCollect(d1.listDatabases.items({ accountId }));
+    return found.flatMap((each) =>
+      typeof each.uuid === "string" && each.uuid !== ""
+        ? [{ id: each.uuid, name: each.name ?? "" }]
+        : [],
+    );
+  }),
+  options,
+  "Aemeth",
+);
+
+/** What the drill's steps returned, as the test reads them. */
+const DrillOutputs = Schema.Struct({
+  export: Schema.Struct({ rowCount: Schema.Int, checksum: Schema.String }),
+  createTemp: Schema.Struct({
+    database: Schema.Struct({ kind: Schema.String, id: Schema.String }),
+  }),
+  verify: Schema.Struct({ rowsCompared: Schema.Int }),
+});
+
+const drillSteps = ["export", "createTemp", "restore", "verify", "destroyTemp", "record"];
+
+// What the sample's seed puts in it (`apps/engine/sample`): 400 customers, 800 orders, 5
+// settings. The figures count every user table, Alchemy's record of the migration among them.
+const seededRows = 1205;
+
+test.skipIf(local)(
+  "the restore drill restores the sample database, finds it whole, and leaves nothing behind",
+  Effect.gen(function* () {
+    const { sampleId } = yield* stack;
+    if (sampleId === undefined) {
+      return yield* Effect.die(new Error("The stage has no sample database."));
+    }
+    const started = yield* call("POST", "/runs", {
+      body: {
+        recipe: "restore-drill",
+        inputs: { production: { kind: "cloudflare.d1.database", id: sampleId } },
+      },
+    });
+    const { runId } = yield* read(StartedResponse, started);
+    drillRuns.add(runId);
+    yield* until(runId, "Succeeded", 8);
+
+    const events = yield* eventsOf(runId);
+    const succeeded = events.flatMap((event) => (event._tag === "StepSucceeded" ? [event] : []));
+    expect(succeeded.map((event) => event.step)).toEqual(drillSteps);
+    // One attempt of each step: nothing failed on the way.
+    expect(events.filter((event) => event._tag === "StepStarted")).toHaveLength(6);
+    const outputs = yield* Schema.decodeUnknownEffect(DrillOutputs)(
+      Object.fromEntries(succeeded.map((event) => [event.step, event.outputs])),
+    );
+    const { rowCount, checksum } = outputs.export;
+    expect(rowCount).toBeGreaterThan(seededRows);
+    expect(outputs.verify.rowsCompared).toBe(rowCount);
+    expect(checksum).toMatch(/^[0-9a-f]{64}$/u);
+    // The temporary database is gone, by its id and by any name with the run's id in it.
+    const left = yield* databases;
+    expect(left.filter((each) => each.id === outputs.createTemp.database.id)).toEqual([]);
+    expect(left.filter((each) => each.name.includes(runId))).toEqual([]);
+    expect(left.map((each) => each.id)).toContain(sampleId);
+
+    // Recorded in the index, and archived.
+    const record = yield* Effect.flatMap(
+      call("GET", `/test/runs/${runId}/record`).pipe(
+        Effect.repeat({
+          schedule: Schedule.spaced("2 seconds"),
+          until: (answer) => answer.text.includes('"Succeeded"'),
+          times: 30,
+        }),
+      ),
+      (answer) => read(RecordResponse, answer),
+    );
+    expect(record.row).toMatchObject({
+      state: "Succeeded",
+      archiveKey: `runs/${runId}.json`,
+      result: { rowsCompared: rowCount },
+    });
+    expect(record.archive).toBe(archiveText(events));
+
+    // The export's link, which downloads the whole database, is nowhere the run is kept or shown.
+    const shown = [
+      record.archive ?? "",
+      JSON.stringify(record.row),
+      (yield* call("GET", `/runs/${runId}`)).text,
+      (yield* call("GET", `/runs/${runId}/events`)).text,
+    ].join("\n");
+    expect(shown).not.toMatch(/cloudflarestorage|X-Amz-|https:/u);
+  }),
+  { timeout: 900_000 },
+);
+
 test(
   "a run waits at its gate through a deploy, records who approved, and is archived once",
   Effect.gen(function* () {
@@ -363,4 +493,256 @@ test.skipIf(local)(
     expect(executionsOf(events, "work")).toEqual([2]);
   }),
   { timeout: 900_000 },
+);
+
+// D3 (M2 Part D): the drill under faults the stage sets for a run. `test-drill` is the restore
+// drill with a gate, `hold`, in front; the test sets the run's fault while it waits there.
+
+/** The temporary database of a run, as the drill names it. */
+const temporaryOf = (runId: string) => `restore-drill-${runId}`;
+
+const finalStates = new Set(["Succeeded", "Failed", "Cancelled", "NeedsAttention"]);
+
+/** Asks every three seconds until the run is in a final state, for up to `minutes`. */
+const finalOf = (runId: string, minutes: number) =>
+  stateOf(runId).pipe(
+    Effect.repeat({
+      schedule: Schedule.spaced("3 seconds"),
+      until: (state) => finalStates.has(state),
+      times: minutes * 20,
+    }),
+  );
+
+/** Starts the held drill on the sample, sets the run's fault, and lets the run go. */
+const startHeld = (fault: unknown) =>
+  Effect.gen(function* () {
+    const { sampleId } = yield* stack;
+    if (sampleId === undefined) {
+      return yield* Effect.die(new Error("The stage has no sample database."));
+    }
+    const started = yield* call("POST", "/runs", {
+      body: {
+        recipe: "test-drill",
+        inputs: { production: { kind: "cloudflare.d1.database", id: sampleId } },
+      },
+    });
+    const { runId } = yield* read(StartedResponse, started);
+    drillRuns.add(runId);
+    yield* until(runId, "WaitingForApproval", 2);
+    const set = yield* call("POST", `/test/runs/${runId}/fault`, { body: fault });
+    expect([set.status, set.text]).toEqual([200, '{"written":true}']);
+    const approved = yield* call("POST", `/runs/${runId}/gates/hold/approve`);
+    expect(approved.status).toBe(200);
+    return runId;
+  });
+
+const marksOf = (runId: string, step: string) =>
+  Effect.flatMap(call("GET", `/test/runs/${runId}/steps/${step}`), (answer) =>
+    read(StepMarks, answer),
+  );
+
+/** Deletes a database the test was told is left behind, so that the account does not keep it. */
+const deleteDatabase = (databaseId: string) =>
+  withProviders(
+    Effect.gen(function* () {
+      const { accountId } = yield* yield* Cloudflare.CloudflareEnvironment;
+      yield* d1.deleteDatabase({ accountId, databaseId });
+    }),
+    options,
+    "Aemeth",
+  );
+
+/** The databases left with the run's id in their name. */
+const leftBy = (runId: string) =>
+  Effect.map(databases, (all) => all.filter((each) => each.name.includes(runId)));
+
+const failuresOf = (events: ReadonlyArray<RunEvent>, step: string) =>
+  events.flatMap((event) =>
+    event._tag === "StepFailed" && event.step === step
+      ? [`${event.error.name} ${event.retryable}`]
+      : [],
+  );
+
+/**
+ * Starts the held drill with each fault, one run after another: the next starts once the one
+ * before is past its export. D1 exports a database once at a time: while it does, another
+ * export is refused (`Currently processing a long-running export`) and the figures' queries
+ * fail (`7500 internal error`), so drills of the same database at once fail each other.
+ */
+/** Whether a run is past its export: held there, at a later step, or ended. */
+const pastExport = (events: ReadonlyArray<RunEvent>, heldAtExport: boolean): boolean =>
+  heldAtExport ||
+  events.some(
+    (event) =>
+      event._tag === "MainPhaseEnded" ||
+      (event._tag === "StepStarted" && event.step === "createTemp"),
+  );
+
+const startOneAfterAnother = (
+  faults: ReadonlyArray<{ readonly step: string; readonly fault: unknown }>,
+) =>
+  Effect.forEach(faults, ({ step, fault }) =>
+    Effect.gen(function* () {
+      const runId = yield* startHeld(fault);
+      yield* Effect.all([eventsOf(runId), marksOf(runId, "export")]).pipe(
+        Effect.repeat({
+          schedule: Schedule.spaced("2 seconds"),
+          until: ([events, marks]) => pastExport(events, marks.held),
+          times: 150,
+        }),
+        Effect.flatMap(([events, marks]) =>
+          pastExport(events, marks.held)
+            ? Effect.void
+            : Effect.die(
+                new Error(
+                  `The run with a fault at ${step} was not past its export in five minutes.`,
+                ),
+              ),
+        ),
+      );
+      return { step, runId };
+    }),
+  );
+
+test.skipIf(local)(
+  "a failure for good at each step of the drill leaves no temporary database, or says so",
+  Effect.gen(function* () {
+    const runs = yield* startOneAfterAnother(
+      drillSteps.map((step) => ({ step, fault: { _tag: "Fail", step } })),
+    );
+    yield* Effect.forEach(
+      runs,
+      ({ step, runId }) =>
+        Effect.gen(function* () {
+          const state = yield* finalOf(runId, 6);
+          const events = yield* eventsOf(runId);
+          expect([step, failuresOf(events, step)]).toEqual([step, ["PlantedFault false"]]);
+          const left = yield* leftBy(runId);
+          if (step === "destroyTemp") {
+            // The cleanup itself failed: the run says something may be left, and it is.
+            expect([step, state, left.map((each) => each.name)]).toEqual([
+              step,
+              "NeedsAttention",
+              [temporaryOf(runId)],
+            ]);
+            yield* Effect.forEach(left, (each) => deleteDatabase(each.id));
+          } else {
+            // A record that could not be written needs a person too.
+            expect([step, state, left]).toEqual([
+              step,
+              step === "record" ? "NeedsAttention" : "Failed",
+              [],
+            ]);
+          }
+        }),
+      { concurrency: 6, discard: true },
+    );
+  }),
+  { timeout: 900_000 },
+);
+
+test.skipIf(local)(
+  "a write between the export's first figures and the export fails the step once, and the retry succeeds",
+  Effect.gen(function* () {
+    const runId = yield* startHeld({ _tag: "WriteBeforeExport" });
+    expect(yield* finalOf(runId, 6)).toBe("Succeeded");
+    const events = yield* eventsOf(runId);
+    expect(failuresOf(events, "export")).toEqual(["SourceChangedDuringExport true"]);
+    const outputs = yield* Schema.decodeUnknownEffect(DrillOutputs)(
+      Object.fromEntries(
+        events.flatMap((event) =>
+          event._tag === "StepSucceeded" ? [[event.step, event.outputs]] : [],
+        ),
+      ),
+    );
+    expect(outputs.verify.rowsCompared).toBe(outputs.export.rowCount);
+    expect(yield* leftBy(runId)).toEqual([]);
+  }),
+  { timeout: 900_000 },
+);
+
+test.skipIf(local)(
+  "a create that made its database and was logged as failed leaves no database: the cleanup finds it by name",
+  Effect.gen(function* () {
+    const runId = yield* startHeld({ _tag: "LoseCreate" });
+    expect(yield* finalOf(runId, 6)).toBe("Failed");
+    const events = yield* eventsOf(runId);
+    expect(failuresOf(events, "createTemp").at(-1)).toMatch(/ false$/u);
+    expect(
+      events.some((event) => event._tag === "StepSucceeded" && event.step === "destroyTemp"),
+    ).toBe(true);
+    expect(yield* leftBy(runId)).toEqual([]);
+  }),
+  { timeout: 900_000 },
+);
+
+test.skipIf(local)(
+  "a kill in the middle of each step of the drill loses no run and makes nothing twice",
+  Effect.gen(function* () {
+    // Six runs, each held just after the work of a different step. One deploy that makes every
+    // Durable Object take the new code at once kills all six there.
+    const runs = yield* startOneAfterAnother(
+      drillSteps.map((step) => ({ step, fault: { _tag: "Kill", step } })),
+    );
+    yield* Effect.forEach(
+      runs,
+      ({ step, runId }) =>
+        marksOf(runId, step).pipe(
+          Effect.repeat({
+            schedule: Schedule.spaced("3 seconds"),
+            until: (marks) => marks.held,
+            times: 80,
+          }),
+          // A run that never held says why, from its log.
+          Effect.tap((marks) =>
+            marks.held
+              ? Effect.void
+              : Effect.flatMap(eventsOf(runId), (events) =>
+                  Effect.logError(
+                    `The run to be killed at ${step} never held: ${events
+                      .map((event) =>
+                        event._tag === "StepFailed"
+                          ? `${brief(event)} (${event.error.name}: ${event.error.message})`
+                          : brief(event),
+                      )
+                      .join(", ")}`,
+                  ),
+                ),
+          ),
+          Effect.tap((marks) =>
+            Effect.sync(() => expect([step, marks.held]).toEqual([step, true])),
+          ),
+        ),
+      { concurrency: 6, discard: true },
+    );
+    yield* deployed(4);
+    // The runs came back without holding. Were any not killed, it goes on now, and is counted
+    // once: the test then fails, as it should.
+    yield* Effect.forEach(runs, ({ runId }) => call("POST", `/test/runs/${runId}/release`), {
+      discard: true,
+    });
+
+    yield* Effect.forEach(
+      runs,
+      ({ step, runId }) =>
+        Effect.gen(function* () {
+          expect([step, yield* finalOf(runId, 10)]).toEqual([step, "Succeeded"]);
+          const events = yield* eventsOf(runId);
+          // One attempt of every step in the log, and none failed.
+          const started = events.flatMap((event) =>
+            event._tag === "StepStarted" ? [event.step] : [],
+          );
+          expect([step, started]).toEqual([step, drillSteps]);
+          expect([step, events.some((event) => event._tag === "StepFailed")]).toEqual([
+            step,
+            false,
+          ]);
+          // The block was run twice: once until the kill, once after the restart.
+          expect([step, (yield* marksOf(runId, step)).executions]).toEqual([step, 2]);
+          expect([step, yield* leftBy(runId)]).toEqual([step, []]);
+        }),
+      { concurrency: 6, discard: true },
+    );
+  }),
+  { timeout: 1_500_000 },
 );

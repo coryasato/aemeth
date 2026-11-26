@@ -29,6 +29,15 @@ const migrations = decodeURIComponent(new URL("../../migrations", import.meta.ur
 /** The index of runs: a D1 database, with its migrations applied on deploy. */
 export const Index = Cloudflare.D1.Database("Index", { migrations }).pipe(retainedInProduction);
 
+// The sample's seed is a migration of its own folder: applied once, when the stage is made.
+const sampleSeed = decodeURIComponent(new URL("../../sample", import.meta.url).pathname);
+
+/**
+ * The seeded sample database the restore drill is run against on a stage that is thrown away
+ * (M2 Part D, D2). Only such a stage has it, and it goes with the stage.
+ */
+export const SampleDatabase = Cloudflare.D1.Database("Sample", { migrations: sampleSeed });
+
 /** The archive of finished runs: one object per run, written once. */
 export const ArchiveBucket = Cloudflare.R2.Bucket(
   "Archive",

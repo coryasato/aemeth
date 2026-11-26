@@ -3,6 +3,7 @@ import type { RunEvent, RunId } from "@aemeth/core";
 import { recipeFiles } from "@aemeth/recipes";
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Option } from "effect";
+import sampleSql from "../sample/0001_sample.sql?raw";
 import { Engine } from "./Engine";
 import { RunLog } from "./RunLog";
 import type { Kit } from "./testing/kit";
@@ -26,11 +27,20 @@ const fakeOf = (kit: Kit): FakeD1 => {
   return kit.d1!;
 };
 
+/** The seed of the sample database a stage that is thrown away has, statement by statement. */
+const sampleSeed = sampleSql
+  .split("\n")
+  .filter((line) => !line.startsWith("--"))
+  .join("\n")
+  .split(/;\n/u)
+  .map((statement) => statement.trim())
+  .filter((statement) => statement !== "");
+
 /** Starts the drill on a seeded production database. */
-const startDrill = (kit: Kit) =>
+const startDrill = (kit: Kit, rows: ReadonlyArray<string> = productionRows) =>
   Effect.gen(function* () {
     const d1 = fakeOf(kit);
-    const production = yield* d1.seed("aemeth-index", productionRows);
+    const production = yield* d1.seed("aemeth-index", rows);
     kit.recipes.set("restore-drill", drill);
     const runId = yield* Effect.flatMap(Engine, (engine) =>
       engine.start("restore-drill", {
@@ -70,6 +80,24 @@ describe("the restore drill", () => {
     expect(drill).toBeDefined();
   });
 
+  it.effect("restores the sample database a stage that is thrown away is seeded with", () =>
+    withEngine((kit) =>
+      Effect.gen(function* () {
+        const { d1, production, runId } = yield* startDrill(kit, sampleSeed);
+        const events = yield* finished(runId);
+        expect(outcome(events).at(-1)).toBe("RunSucceeded");
+        const counted = events.flatMap((event) =>
+          event._tag === "StepSucceeded" && event.step === "verify"
+            ? [Object.entries(event.outputs).find(([name]) => name === "rowsCompared")?.[1]]
+            : [],
+        );
+        // 400 customers, 800 orders (two pages of the figures) and 5 settings.
+        expect(counted).toEqual([1205]);
+        expect(d1.databases()).toEqual([production]);
+      }),
+    ),
+  );
+
   it.effect(
     "restores production into a database of its own, checks it, removes it and records it",
     () =>
@@ -104,9 +132,12 @@ describe("the restore drill", () => {
           const { d1, production, runId } = yield* startDrill(kit);
           const events = yield* finished(runId);
           expect(outcome(events)).toContain(`StepFailed ${step}`);
+          // A failed `finally` step needs a person: a record not written, or a cleanup not done.
+          expect(outcome(events).at(-1)).toBe(
+            step === "destroyTemp" || step === "record" ? "RunFlaggedForAttention" : "RunFailed",
+          );
           if (step === "destroyTemp") {
             // The cleanup itself failed: the run cannot say it cleaned up, and does not.
-            expect(outcome(events).at(-1)).toBe("RunFlaggedForAttention");
             expect(d1.databases()).toHaveLength(2);
           } else {
             expect(d1.databases()).toEqual([production]);
