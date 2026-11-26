@@ -3,17 +3,20 @@ import type { RunEvent, RunId } from "@aemeth/core";
 import { recipeFiles } from "@aemeth/recipes";
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Option } from "effect";
+import type { RunRow } from "./RunIndex";
+import indexSql from "../migrations/0001_runs.sql?raw";
 import sampleSql from "../sample/0001_sample.sql?raw";
 import { Engine } from "./Engine";
 import { RunLog } from "./RunLog";
 import type { Kit } from "./testing/kit";
-import { finished, indexed, withEngine } from "./testing/kit";
+import { archiveBucket, finished, indexed, withEngine } from "./testing/kit";
 
 // The restore drill on the in-memory engine, with its real blocks against the fake D1 API
 // (M2 Part D, D2 and D3 before the deploy): what the run does to the databases, and what it
 // keeps of the export's link.
 
 const drill = recipeFiles.find((each) => each.id === "restore-drill");
+const aemethDrill = recipeFiles.find((each) => each.id === "aemeth-restore-drill");
 
 const productionRows = [
   "CREATE TABLE runs (id TEXT PRIMARY KEY, state TEXT NOT NULL, result TEXT)",
@@ -27,14 +30,51 @@ const fakeOf = (kit: Kit): FakeD1 => {
   return kit.d1!;
 };
 
-/** The seed of the sample database a stage that is thrown away has, statement by statement. */
-const sampleSeed = sampleSql
-  .split("\n")
-  .filter((line) => !line.startsWith("--"))
-  .join("\n")
-  .split(/;\n/u)
-  .map((statement) => statement.trim())
-  .filter((statement) => statement !== "");
+/** A file of SQL, statement by statement. */
+const statementsOf = (sql: string) =>
+  sql
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n")
+    .split(/;\n/u)
+    .map((statement) => statement.trim())
+    .filter((statement) => statement !== "");
+
+/** The seed of the sample database a stage that is thrown away has. */
+const sampleSeed = statementsOf(sampleSql);
+
+const literal = (value: string | number | null): string =>
+  value === null
+    ? "NULL"
+    : typeof value === "number"
+      ? String(value)
+      : `'${value.replaceAll("'", "''")}'`;
+
+/**
+ * The kit's index of runs as a D1 database, made by the engine's own migration: what the drill of
+ * Aemeth's own index exports. `change` lets a test plant a row that is not what the engine wrote.
+ */
+const indexDatabase = (kit: Kit, change: (rows: Array<RunRow>) => void = () => {}) =>
+  Effect.gen(function* () {
+    const rows = [...kit.index.values()];
+    change(rows);
+    const inserts = rows.map(
+      (row) =>
+        `INSERT INTO runs VALUES (${[
+          row.id,
+          row.recipe.id,
+          row.recipe.version,
+          row.state,
+          row.startedAt,
+          row.endedAt,
+          row.archiveKey,
+          row.result === null ? null : JSON.stringify(row.result),
+        ]
+          .map(literal)
+          .join(", ")})`,
+    );
+    return yield* fakeOf(kit).seed("aemeth-index", [...statementsOf(indexSql), ...inserts]);
+  });
 
 /** Starts the drill on a seeded production database. */
 const startDrill = (kit: Kit, rows: ReadonlyArray<string> = productionRows) =>
@@ -183,4 +223,109 @@ describe("the restore drill", () => {
       }),
     ),
   );
+});
+
+describe("the restore drill of Aemeth's own index", () => {
+  it("is one of the recipe files", () => {
+    expect(aemethDrill).toBeDefined();
+  });
+
+  /** Two drills of a database that end, one well and one not: the runs the index then holds. */
+  const earlierRuns = (kit: Kit) =>
+    Effect.gen(function* () {
+      const first = yield* startDrill(kit);
+      yield* finished(first.runId);
+      kit.drillFault = "verify";
+      const second = yield* startDrill(kit);
+      yield* finished(second.runId);
+      kit.drillFault = undefined;
+      expect([
+        (yield* indexed(kit, first.runId)).state,
+        (yield* indexed(kit, second.runId)).state,
+      ]).toEqual(["Succeeded", "Failed"]);
+      return [first.runId, second.runId];
+    });
+
+  const startAemethDrill = (kit: Kit, index: { readonly id: string }) =>
+    Effect.gen(function* () {
+      kit.recipes.set("aemeth-restore-drill", aemethDrill);
+      return yield* Effect.flatMap(Engine, (engine) =>
+        engine.start("aemeth-restore-drill", {
+          production: { kind: "cloudflare.d1.database", id: index.id },
+          archive: { kind: "cloudflare.r2.bucket", id: archiveBucket },
+        }),
+      );
+    });
+
+  it.effect("restores the index, replays the archived runs it records, and records how many", () =>
+    withEngine((kit) =>
+      Effect.gen(function* () {
+        yield* earlierRuns(kit);
+        const index = yield* indexDatabase(kit);
+        const before = fakeOf(kit).databases();
+        const runId = yield* startAemethDrill(kit, index);
+        const events = yield* finished(runId);
+        expect(outcome(events)).toEqual([
+          "StepSucceeded export",
+          "StepSucceeded createTemp",
+          "StepSucceeded restore",
+          "StepSucceeded verify",
+          "StepSucceeded checkArchive",
+          "StepSucceeded destroyTemp",
+          "StepSucceeded record",
+          "RunSucceeded",
+        ]);
+        const row = yield* indexed(kit, runId);
+        expect(row.result).toMatchObject({ runsChecked: 2 });
+        expect(fakeOf(kit).databases()).toEqual(before);
+        yield* linkIsNowhere(kit, runId, events);
+      }),
+    ),
+  );
+
+  const planted = [
+    [
+      "whose archive replays to another state than its row",
+      (rows: Array<RunRow>) => {
+        rows[1] = { ...rows[1]!, state: "Succeeded" };
+      },
+    ],
+    [
+      "whose archive is not there",
+      (rows: Array<RunRow>) => {
+        rows[0] = { ...rows[0]!, archiveKey: "runs/gone.json" };
+      },
+    ],
+  ] as const;
+
+  for (const [what, change] of planted) {
+    it.effect(`fails at the check, and still cleans up, on a run ${what}`, () =>
+      withEngine((kit) =>
+        Effect.gen(function* () {
+          const [first, second] = yield* earlierRuns(kit);
+          const index = yield* indexDatabase(kit, change);
+          const before = fakeOf(kit).databases();
+          const runId = yield* startAemethDrill(kit, index);
+          const events = yield* finished(runId);
+          expect(outcome(events)).toEqual([
+            "StepSucceeded export",
+            "StepSucceeded createTemp",
+            "StepSucceeded restore",
+            "StepSucceeded verify",
+            "StepFailed checkArchive",
+            "StepSucceeded destroyTemp",
+            "StepSucceeded record",
+            "RunFailed",
+          ]);
+          const failure = JSON.stringify(
+            events.filter((event) => event._tag === "StepFailed" && event.step === "checkArchive"),
+          );
+          expect(failure).toContain("ArchiveDisagrees");
+          expect(failure).toContain(what.includes("state") ? second : first);
+          expect((yield* indexed(kit, runId)).result).toMatchObject({ runsChecked: null });
+          expect(fakeOf(kit).databases()).toEqual(before);
+        }),
+      ),
+    );
+  }
 });

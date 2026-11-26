@@ -85,3 +85,31 @@ export class RunRecord extends Context.Service<
   RunRecord,
   { readonly write: (result: Schema.Json) => Effect.Effect<void, RecordUnavailable> }
 >()("@aemeth/blocks/RunRecord") {}
+
+/**
+ * Why a call to the R2 API did not do what was asked.
+ *
+ * - `Unavailable`: Cloudflare could not be reached, answered 5xx, or asked to slow down.
+ * - `Refused`: Cloudflare refused the request, as a 4xx other than an object that is not there.
+ */
+export const R2FailureReason = Schema.Literals(["Unavailable", "Refused"]);
+export type R2FailureReason = typeof R2FailureReason.Type;
+
+/** A call to the R2 API that failed. */
+export class R2Failed extends Schema.TaggedError<R2Failed, { readonly brand: unique symbol }>()(
+  "R2Failed",
+  { reason: R2FailureReason, operation: Schema.String, message: Schema.String },
+) {}
+
+/**
+ * Cloudflare's R2 API, as the archive check reads it (M2 decision 13). A bucket to check is a
+ * recipe input, not a binding, so the engine calls the REST API with its own token, as it does
+ * for D1.
+ */
+export class R2Api extends Context.Service<
+  R2Api,
+  {
+    /** An object's text, or `None` if the bucket holds nothing at that key. */
+    readonly get: (bucket: string, key: string) => Effect.Effect<Option.Option<string>, R2Failed>;
+  }
+>()("@aemeth/blocks/R2Api") {}

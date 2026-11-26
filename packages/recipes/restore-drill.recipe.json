@@ -2,7 +2,7 @@
   "$schema": "./recipe.schema.json",
   "format": 1,
   "id": "restore-drill",
-  "version": 2,
+  "version": 3,
   "title": "Restore drill",
   "description": "Proves that a backup can be restored. Production is only read.",
   "start": "export",
@@ -101,7 +101,7 @@
       "_tag": "Step",
       "id": "record",
       "block": "record.restoreDrill",
-      "version": 1,
+      "version": 2,
       "inputs": {
         "rowsCompared": {
           "_tag": "OptionalStepOutput",

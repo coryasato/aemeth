@@ -1,3 +1,4 @@
+import aemethRestoreDrill from "../aemeth-restore-drill.recipe.json" with { type: "json" };
 import artifactsPipeline from "../artifacts-pipeline.recipe.json" with { type: "json" };
 import environmentCleanup from "../environment-cleanup.recipe.json" with { type: "json" };
 import gradualRelease from "../gradual-release.recipe.json" with { type: "json" };
@@ -11,6 +12,7 @@ import secretRotation from "../secret-rotation.recipe.json" with { type: "json" 
  * to the files in the folder.
  */
 export const recipeFiles: ReadonlyArray<{ readonly id: string }> = [
+  aemethRestoreDrill,
   artifactsPipeline,
   environmentCleanup,
   gradualRelease,

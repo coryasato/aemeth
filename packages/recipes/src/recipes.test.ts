@@ -23,8 +23,11 @@ const failureOf = (document: unknown): string => {
 };
 
 describe("recipe files", () => {
-  it("are the six recipes of docs/recipes.md", () => {
+  // The six of docs/recipes.md, and the restore drill as it runs against Aemeth itself, with
+  // the check on the run archive (M2 decision 13).
+  it("are the six recipes of docs/recipes.md and the drill of Aemeth's own index", () => {
     expect(recipes.map((recipe) => recipe.name).toSorted()).toEqual([
+      "aemeth-restore-drill.recipe.json",
       "artifacts-pipeline.recipe.json",
       "environment-cleanup.recipe.json",
       "gradual-release.recipe.json",

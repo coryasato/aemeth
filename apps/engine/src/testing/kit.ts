@@ -1,5 +1,5 @@
 import type { Block, BlockInputs, BlockOutputs, StepContext } from "@aemeth/blocks";
-import { BlockFailed, drillBlocks, implement, Secrets } from "@aemeth/blocks";
+import { BlockFailed, drillBlocks, implement, R2Api, R2Failed, Secrets } from "@aemeth/blocks";
 import type { FakeD1 } from "@aemeth/blocks/testing";
 import { makeFakeD1 } from "@aemeth/blocks/testing";
 import type { BlockSpec, EventRejected, RunEvent, RunId, RunState } from "@aemeth/core";
@@ -35,6 +35,7 @@ import {
   BlockServices,
   d1Offer,
   offer,
+  r2Offer,
   Recipes,
   runRecordOffer,
   secretsOffer,
@@ -226,6 +227,9 @@ export type Kit = {
   drillFault: string | undefined;
 };
 
+/** The name the archive check reads the kit's archive by, over the fake R2 API. */
+export const archiveBucket = "aemeth-archive";
+
 /** Outputs that fit the block's declaration, with two items in every list. */
 export const fitting = (blockId: string): BlockOutputs => {
   const spec = specs.find((candidate) => candidate.id === blockId.split(" ")[0]);
@@ -393,6 +397,22 @@ const layerOf = (kit: Kit) => {
           secrets,
           record,
           d1Offer(d1.api),
+          // The archive check reads the engine's own archive, as it does when the stage drills
+          // itself; any other bucket is not there.
+          r2Offer(
+            R2Api.of({
+              get: (bucket, key) =>
+                bucket === archiveBucket
+                  ? Effect.sync(() => Option.fromUndefinedOr(kit.archive.get(key)))
+                  : Effect.fail(
+                      new R2Failed({
+                        reason: "Refused",
+                        operation: "get",
+                        message: `10006 There is no bucket ${bucket}.`,
+                      }),
+                    ),
+            }),
+          ),
           offer(Stage, (step) =>
             Effect.succeed(
               Stage.of({

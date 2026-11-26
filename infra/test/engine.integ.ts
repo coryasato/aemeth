@@ -8,7 +8,7 @@ import {
   RunResponse,
   StartedResponse,
 } from "@aemeth/engine";
-import { RecordResponse, StepMarks } from "@aemeth/engine/cloudflare";
+import { Planted, RecordResponse, StepMarks } from "@aemeth/engine/cloudflare";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import { withProviders } from "@alchemy.run/test/Core";
 import * as Test from "@alchemy.run/test/Vitest";
@@ -25,6 +25,8 @@ import Stack from "../alchemy.run";
 //
 // Since Part D it also runs the restore drill against the stage's seeded sample database, with
 // the engine's own D1 token: export, a temporary database, restore, check, destroy, record.
+// Since Part E it runs the drill of Aemeth's own index against the stage's own index and archive,
+// once as they are and once with an archive planted that does not replay to its row.
 //
 // The stage is `$ALCHEMY_TEST_STAGE` (`pr-<number>` in CI), or `test_$USER`. With
 // `ALCHEMY_DEV=1` the same suite runs on local emulators, where there is no Access and a deploy
@@ -716,8 +718,22 @@ test.skipIf(local)(
       { concurrency: 6, discard: true },
     );
     yield* deployed(4);
-    // The runs came back without holding. Were any not killed, it goes on now, and is counted
-    // once: the test then fails, as it should.
+    // The deploy is done before every object has been reset: a release sent at once can reach a
+    // held block first (seen in M2 Part E). A block run again counts a second execution as it
+    // starts, so each run is given three minutes to show one. Then every run is released: one
+    // the deploy did not kill goes on now, is counted once, and the test fails, as it should.
+    yield* Effect.forEach(
+      runs,
+      ({ runId, step }) =>
+        marksOf(runId, step).pipe(
+          Effect.repeat({
+            schedule: Schedule.spaced("2 seconds"),
+            until: (marks) => marks.executions >= 2,
+            times: 90,
+          }),
+        ),
+      { concurrency: 6, discard: true },
+    );
     yield* Effect.forEach(runs, ({ runId }) => call("POST", `/test/runs/${runId}/release`), {
       discard: true,
     });
@@ -745,4 +761,100 @@ test.skipIf(local)(
     );
   }),
   { timeout: 1_500_000 },
+);
+
+/** What the drill of Aemeth's own index recorded, as the test reads it. */
+const AemethResult = Schema.Struct({ runsChecked: Schema.NullOr(Schema.Int) });
+
+/** Starts the drill of Aemeth's own index against this stage's index and archive. */
+const startAemethDrill = Effect.gen(function* () {
+  const { indexId, archiveBucket } = yield* stack;
+  const started = yield* call("POST", "/runs", {
+    body: {
+      recipe: "aemeth-restore-drill",
+      inputs: {
+        production: { kind: "cloudflare.d1.database", id: indexId },
+        archive: { kind: "cloudflare.r2.bucket", id: archiveBucket },
+      },
+    },
+  });
+  const { runId } = yield* read(StartedResponse, started);
+  drillRuns.add(runId);
+  return runId;
+});
+
+const recordOf = (runId: string) =>
+  Effect.flatMap(call("GET", `/test/runs/${runId}/record`), (answer) =>
+    read(RecordResponse, answer),
+  );
+
+/** The id of the last drill of Aemeth's own index that succeeded here. */
+let aemethDrill: string | undefined;
+
+test.skipIf(local)(
+  "the drill of the stage's own index restores it, and its archived runs replay to their rows",
+  Effect.gen(function* () {
+    const runId = yield* startAemethDrill;
+    expect(yield* finalOf(runId, 8)).toBe("Succeeded");
+    const events = yield* eventsOf(runId);
+    expect(events.flatMap((event) => (event._tag === "StepSucceeded" ? [event.step] : []))).toEqual(
+      ["export", "createTemp", "restore", "verify", "checkArchive", "destroyTemp", "record"],
+    );
+    const { row } = yield* recordOf(runId);
+    const result = yield* Schema.decodeUnknownEffect(AemethResult)(row?.result);
+    // Every run the suite has finished so far is archived: the drills before this one among them.
+    expect(result.runsChecked).toBeGreaterThan(5);
+    expect(yield* leftBy(runId)).toEqual([]);
+    aemethDrill = runId;
+  }),
+  { timeout: 900_000 },
+);
+
+test.skipIf(local)(
+  "an archive planted that does not replay to its row fails the drill of the stage's own index, which still cleans up",
+  Effect.gen(function* () {
+    if (aemethDrill === undefined) {
+      return yield* Effect.die(new Error("The drill before this one did not succeed."));
+    }
+    // The archive of the drill before, a run that succeeded, as the log of a run that never ran,
+    // whose row says it failed.
+    // Its log says it ended before the engine has archived it and written its row.
+    const { archive } = yield* recordOf(aemethDrill).pipe(
+      Effect.repeat({
+        schedule: Schedule.spaced("2 seconds"),
+        until: (record) => record.archive !== null && record.row?.archiveKey !== null,
+        times: 60,
+      }),
+    );
+    if (archive === null) {
+      return yield* Effect.die(new Error("The drill before this one was never archived."));
+    }
+    const planted = `zz${aemethDrill.slice(2)}`;
+    const text = archive.replaceAll(aemethDrill, planted);
+    const replayed = replayArchive(text);
+    expect(Result.isSuccess(replayed) ? replayed.success._tag : replayed.failure).toBe("Succeeded");
+    const plant = yield* call("POST", `/test/runs/${planted}/plant`, {
+      body: Planted.make({ state: "Failed", archive: text }),
+    });
+    expect([plant.status, plant.text]).toEqual([200, '{"written":true}']);
+
+    const runId = yield* startAemethDrill;
+    expect(yield* finalOf(runId, 8)).toBe("Failed");
+    const events = yield* eventsOf(runId);
+    expect(failuresOf(events, "checkArchive")).toEqual(["ArchiveDisagrees false"]);
+    const failure = events.find(
+      (event) => event._tag === "StepFailed" && event.step === "checkArchive",
+    );
+    const message = failure?._tag === "StepFailed" ? failure.error.message : "";
+    expect(message).toContain(
+      `${planted}: its archive replays to Succeeded; the index says Failed.`,
+    );
+    // Only the planted run disagrees.
+    expect(message).toMatch(/^1 of the archived runs/u);
+    expect(
+      events.some((event) => event._tag === "StepSucceeded" && event.step === "destroyTemp"),
+    ).toBe(true);
+    expect(yield* leftBy(runId)).toEqual([]);
+  }),
+  { timeout: 900_000 },
 );

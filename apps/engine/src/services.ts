@@ -1,5 +1,5 @@
 import type { Block, StepContext } from "@aemeth/blocks";
-import { D1Api, RecordUnavailable, RunRecord, Secrets } from "@aemeth/blocks";
+import { D1Api, R2Api, RecordUnavailable, RunRecord, Secrets } from "@aemeth/blocks";
 import type { BlockId, BlockSpec, Version } from "@aemeth/core";
 import { Context, Duration, Effect, Layer } from "effect";
 import { RunIndex } from "./RunIndex";
@@ -90,6 +90,9 @@ export const runRecordOffer: Effect.Effect<Offer, never, RunIndex> = Effect.map(
 
 /** Cloudflare's D1 API, for the drill's blocks, with the engine's own token (M2 decision 12). */
 export const d1Offer = (api: D1Api["Service"]): Offer => offer(D1Api, () => Effect.succeed(api));
+
+/** Cloudflare's R2 API, for the archive check, with the same token (M2 decision 13). */
+export const r2Offer = (api: R2Api["Service"]): Offer => offer(R2Api, () => Effect.succeed(api));
 
 /**
  * How often a step, a `finally` step or an undo is tried, and how long the engine waits before

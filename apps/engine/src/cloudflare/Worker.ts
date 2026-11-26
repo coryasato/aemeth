@@ -14,10 +14,19 @@ import type { AccessCheck } from "../caller";
 import { accessCheckOf, callerOf, certsOf } from "../caller";
 import { layer as engineLayer, Waker } from "../Engine";
 import { makeD1Rest } from "../D1Rest";
+import { makeR2Rest } from "../R2Rest";
 import { RunIndex } from "../RunIndex";
 import { RunWorkflowLayer } from "../RunWorkflow";
 import type { Offer } from "../services";
-import { Blocks, BlockServices, d1Offer, Recipes, runRecordOffer, secretsOffer } from "../services";
+import {
+  Blocks,
+  BlockServices,
+  d1Offer,
+  r2Offer,
+  Recipes,
+  runRecordOffer,
+  secretsOffer,
+} from "../services";
 import { faultyDrill, fixtureApi, fixtureBlocks, fixtureRecipes } from "./fixtures";
 import type { WithHost } from "./records";
 import { archiveOn, indexOn } from "./records";
@@ -37,10 +46,10 @@ import { layerRunLog, RunLogEntity, RunLogEntityLayer } from "./RunLogEntity";
  *   (decision 30), so a deploy needs the team's domain, `AEMETH_ACCESS_TEAM`, such as
  *   `https://aemeth.cloudflareaccess.com`. Without it nothing is deployed. Under `alchemy dev`
  *   there is no Access and no token, and the setting is `local`.
- * - The drill's blocks call Cloudflare's D1 API with a token of the engine's own, with `D1 Write`
- *   and nothing else, separate from the deploy's (decision 0008): `AEMETH_D1_TOKEN`, kept as a
- *   secret of the Worker. A stage deployed without it runs no drill: its blocks are refused the
- *   service and fail.
+ * - The drill's blocks call Cloudflare's D1 and R2 APIs with a token of the engine's own, with
+ *   `D1 Write` and `Workers R2 Storage Read` and nothing else, separate from the deploy's
+ *   (decision 0008): `AEMETH_D1_TOKEN`, kept as a secret of the Worker. A stage deployed without
+ *   it runs no drill: its blocks are refused the services and fail.
  */
 const props = Effect.gen(function* () {
   const kept = (yield* currentStage) !== "ThrownAway";
@@ -196,23 +205,21 @@ export default class EngineWorker extends Cloudflare.Worker<EngineWorker>()(
     const drill = yield* drillBlocks;
     const blocks = fixtures ? [...faultyDrill(drill, archive), ...(yield* fixtureBlocks)] : drill;
 
-    // The drill's D1 API, when the stage has the engine's token. Alchemy binds the account's id.
+    // The drill's D1 and R2 APIs, when the stage has the engine's token. Alchemy binds the
+    // account's id.
     const textOf = (name: string): string | undefined => {
       const value: unknown = Option.isSome(env) ? env.value[name] : undefined;
       return typeof value === "string" && value !== "" ? value : undefined;
     };
     const d1Token = textOf("AEMETH_D1_TOKEN");
     const accountId = textOf("ALCHEMY_CLOUDFLARE_ACCOUNT_ID");
-    const d1: ReadonlyArray<Offer> =
+    const cloudflareApis: ReadonlyArray<Offer> =
       d1Token === undefined || accountId === undefined
         ? []
-        : [
-            d1Offer(
-              yield* makeD1Rest({ accountId, token: Redacted.make(d1Token) }).pipe(
-                Effect.provide(Layer.merge(FetchHttpClient.layer, Digest.layerWebCrypto)),
-              ),
-            ),
-          ];
+        : yield* Effect.gen(function* () {
+            const settings = { accountId, token: Redacted.make(d1Token) };
+            return [d1Offer(yield* makeD1Rest(settings)), r2Offer(yield* makeR2Rest(settings))];
+          }).pipe(Effect.provide(Layer.merge(FetchHttpClient.layer, Digest.layerWebCrypto)));
     const recipes = [...recipeFiles, ...(fixtures ? yield* fixtureRecipes : [])];
 
     const index = indexOn(database, withHost);
@@ -230,7 +237,7 @@ export default class EngineWorker extends Cloudflare.Worker<EngineWorker>()(
             offers: [
               yield* secretsOffer,
               yield* Effect.provideService(runRecordOffer, RunIndex, index),
-              ...d1,
+              ...cloudflareApis,
             ],
           });
         }),

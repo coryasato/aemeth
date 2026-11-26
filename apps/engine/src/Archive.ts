@@ -1,6 +1,5 @@
-import type { RunId, RunState } from "@aemeth/core";
-import { replay, RunEvent } from "@aemeth/core";
-import { Context, Result, Schema } from "effect";
+import type { RunId } from "@aemeth/core";
+import { Context, Schema } from "effect";
 import type { Effect } from "effect";
 
 /** The archive could not be written or read. Nothing says the object is there. */
@@ -28,21 +27,4 @@ export class Archive extends Context.Service<
 /** Where a run's log is archived. */
 export const archiveKey = (runId: RunId): string => `runs/${runId}.json`;
 
-const Log = Schema.fromJsonString(Schema.Array(RunEvent));
-const encodeLog = Schema.encodeSync(Log);
-const decodeLog = Schema.decodeUnknownResult(Log, { onExcessProperty: "error" });
-
-/** A run's whole log as the archive holds it: the events, in order, as JSON. */
-export const archiveText = (events: ReadonlyArray<RunEvent>): string => encodeLog(events);
-
-/**
- * The state an archived log replays to, through the same `transition` the engine used, or why
- * it does not: the text is not a log, or `transition` refuses one of its events.
- */
-export const replayArchive = (text: string): Result.Result<RunState, string> => {
-  const events = decodeLog(text);
-  if (Result.isFailure(events)) {
-    return Result.fail(String(events.failure));
-  }
-  return Result.mapError(replay(events.success), (rejected) => JSON.stringify(rejected));
-};
+export { archiveText, replayArchive } from "@aemeth/core";

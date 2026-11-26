@@ -2,7 +2,7 @@
 
 The Alchemy stack that declares everything Aemeth deploys. In M2 that is the engine: the Worker, the four Durable Object classes of its cluster, the D1 index with its migrations, the R2 archive, and the Cloudflare Access application in front, with the service token CI calls it by. A stage that is thrown away also has the seeded sample database the restore drill runs on in the integration suite (`apps/engine/sample`). The web app joins in M3.
 
-- `alchemy.run.ts`: the stack. The Worker and the resources it binds are declared beside the engine's code, in [`apps/engine/src/cloudflare`](../apps/engine/src/cloudflare); the stack puts them together and returns the Worker's URL and the service token.
+- `alchemy.run.ts`: the stack. The Worker and the resources it binds are declared beside the engine's code, in [`apps/engine/src/cloudflare`](../apps/engine/src/cloudflare); the stack puts them together and returns the Worker's URL, the service token, and the index's id and the archive bucket's name, which the drill of Aemeth's own index is given to drill the stage.
 - `test/engine.integ.ts`: the integration suite. It deploys the stack to a stage, drives the deployed engine over HTTP, and destroys the stage.
 - `vitest.integration.config.ts`: the Vitest project of that suite. It is not part of `bun run test`.
 
@@ -18,7 +18,7 @@ One stack, three kinds of stage. Every resource carries its stage in its name.
 
 A deploy to a stage with any other name is refused: a slip such as `prod` is not a stage.
 
-The fixtures are two fake blocks, a recipe of them (`test-gated`) and two routes under `/test`, which let the integration suite take a run through a gate, a deploy and a kill, and read what the engine keeps outside a run's log. They are in [`apps/engine/src/cloudflare/fixtures.ts`](../apps/engine/src/cloudflare/fixtures.ts).
+The fixtures are two fake blocks, a recipe of them (`test-gated`), the restore drill held at a gate (`test-drill`) and routes under `/test`, which let the integration suite take a run through a gate, a deploy and a kill, read what the engine keeps outside a run's log, set a fault on a drill, and plant an archive object that does not replay to its row. They are in [`apps/engine/src/cloudflare/fixtures.ts`](../apps/engine/src/cloudflare/fixtures.ts).
 
 ## Commands
 
@@ -39,7 +39,7 @@ Read from the environment when the stack is deployed, and not in the repository.
 |---|---|---|
 | `AEMETH_ACCESS_TEAM` | The Zero Trust team domain, `https://<team>.cloudflareaccess.com`. The engine checks the signature of every Access token against this team's keys, and its issuer, audience and expiry (M2 decision 30) | Nothing is deployed. Under `ALCHEMY_DEV=1` it is not needed |
 | `AEMETH_OWNER_EMAIL` | The person Access lets in besides the service token | Only the service token gets through |
-| `AEMETH_D1_TOKEN` | The engine's own API token, with `D1 Write` and nothing else, kept as a secret of the Worker. The restore drill's blocks call the D1 API with it. It is not the deploy token ([decision 0008](../docs/decisions/0008-out-of-band-path.md)) | The stage runs no drill: its blocks are refused the D1 service and fail |
+| `AEMETH_D1_TOKEN` | The engine's own API token, with `D1 Write` and `Workers R2 Storage Read` and nothing else, kept as a secret of the Worker. The restore drill's blocks call the D1 API with it, and the archive check reads a stage's archive through the R2 API with it (M2 decision 40). It is not the deploy token ([decision 0008](../docs/decisions/0008-out-of-band-path.md)) | The stage runs no drill: its blocks are refused the D1 and R2 services and fail |
 
 ## Credentials
 

@@ -1,11 +1,11 @@
 import type { Block, StepContext } from "@aemeth/blocks";
 import { BlockFailed, D1Api, D1Failed, implement, Secrets } from "@aemeth/blocks";
-import { BlockSpec, Recipe, RunId } from "@aemeth/core";
+import { BlockSpec, Recipe, RecipeId, RunId, Version } from "@aemeth/core";
 import { recipeFiles } from "@aemeth/recipes";
-import { Context, Duration, Effect, Option, Schedule, Schema } from "effect";
+import { Clock, Context, Duration, Effect, Option, Schedule, Schema } from "effect";
 import { HttpServerRequest, HttpServerResponse } from "effect/http";
 import { Archive, archiveKey } from "../Archive";
-import { RunIndex, RunRow } from "../RunIndex";
+import { FinalState, RunIndex, RunRow } from "../RunIndex";
 
 // What a stage that is thrown away carries besides the real blocks and recipes: two fake blocks
 // and a recipe of them, so the integration tests can take a run through a gate, a deploy and a
@@ -295,6 +295,17 @@ export const fixtureBlocks: Effect.Effect<ReadonlyArray<Block>> = Effect.gen(fun
 
 const decodeRunId = Schema.decodeUnknownOption(RunId);
 
+/**
+ * What `POST /test/runs/:id/plant` takes: an archive object for a run that never ran, and the
+ * final state its row in the index is to say. The archive check of the drill of Aemeth's own
+ * index must find a row whose log does not replay to it (M2 Part E, E2).
+ */
+export const Planted = Schema.Struct({ state: FinalState, archive: Schema.String });
+const decodePlanted = Schema.decodeUnknownEffect(Schema.fromJsonString(Planted));
+
+/** The recipe a planted row names: none of the engine's. */
+const plantedRecipe = { id: RecipeId.make("planted"), version: Version.make(1) };
+
 /** What `GET /test/runs/:id/record` answers with: the run's row in the index and its archive. */
 export const RecordResponse = Schema.Struct({
   row: Schema.NullOr(RunRow),
@@ -308,6 +319,8 @@ export const RecordResponse = Schema.Struct({
  * - `GET /test/runs/:id/record`: the run's row in the index, and the text of its archive.
  * - `POST /test/runs/:id/archive`: writes the request's body to the run's archive key as the
  *   engine would, and says whether anything was written.
+ * - `POST /test/runs/:id/plant`: writes a `Planted` archive object and the row that points to it,
+ *   for a run that never ran, once.
  * - `POST /test/runs/:id/fault`: sets the run's `Fault`, once.
  * - `POST /test/runs/:id/release`: lets a step held by `Kill` go on.
  * - `GET /test/runs/:id/steps/:step`: the `StepMarks` of a step of a run with a fault.
@@ -369,6 +382,18 @@ export const fixtureApi = (
         return HttpServerResponse.jsonUnsafe({ error: "NotAFault" }, { status: 400 });
       }
       const written = yield* archive.putOnce(markKey(runId.value, "fault"), text);
+      return HttpServerResponse.jsonUnsafe({ written });
+    }
+    if (method === "POST" && what === "plant") {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const planted = yield* Effect.option(decodePlanted(yield* request.text));
+      if (Option.isNone(planted) || (yield* index.find(runId.value)) !== undefined) {
+        return HttpServerResponse.jsonUnsafe({ error: "NotPlanted" }, { status: 400 });
+      }
+      const written = yield* archive.putOnce(key, planted.value.archive);
+      const at = yield* Clock.currentTimeMillis;
+      yield* index.started({ runId: runId.value, recipe: plantedRecipe, at });
+      yield* index.ended({ runId: runId.value, state: planted.value.state, at, archiveKey: key });
       return HttpServerResponse.jsonUnsafe({ written });
     }
     if (method === "POST" && what === "release") {

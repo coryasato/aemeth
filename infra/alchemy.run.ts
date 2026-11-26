@@ -1,4 +1,11 @@
-import { CiToken, currentStage, EngineWorker, SampleDatabase } from "@aemeth/engine/cloudflare";
+import {
+  ArchiveBucket,
+  CiToken,
+  currentStage,
+  EngineWorker,
+  Index,
+  SampleDatabase,
+} from "@aemeth/engine/cloudflare";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Alchemy from "alchemy";
 import { Effect } from "effect";
@@ -20,6 +27,8 @@ export default Alchemy.Stack(
   Effect.gen(function* () {
     const engine = yield* EngineWorker;
     const token = yield* CiToken;
+    const index = yield* Index;
+    const archive = yield* ArchiveBucket;
     const sample =
       (yield* currentStage) === "ThrownAway" ? (yield* SampleDatabase).databaseId : undefined;
     return {
@@ -30,6 +39,10 @@ export default Alchemy.Stack(
       ciClientSecret: token.clientSecret,
       // The id the restore drill is given as its `production` on this stage, if it has one.
       sampleId: sample,
+      // What the drill of Aemeth's own index is given to drill this stage: the index's id as its
+      // `production`, and the archive bucket's name as its `archive` (M2 Part E).
+      indexId: index.databaseId,
+      archiveBucket: archive.bucketName,
     };
   }),
 );

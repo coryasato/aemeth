@@ -6,15 +6,26 @@ import {
   RunId as RunIdSchema,
   StepId,
 } from "@aemeth/core";
+import {
+  eventAt,
+  mainFailed,
+  mainSucceeded,
+  runFailed,
+  runStarted,
+  runSucceeded,
+} from "@aemeth/core/testing";
 import { describe, expect, it } from "@effect/vitest";
 import type { Schema } from "effect";
 import { Context, Effect, Exit, Option } from "effect";
 import type { Block, BlockInputs, BlockOutputs, StepContext } from "./implement";
 import { Secrets } from "./implement";
-import { drillBlocks, figuresOf, pageSize, temporaryName } from "./drill";
-import { D1Api, RecordUnavailable, RunRecord } from "./services";
+import { archiveText } from "@aemeth/core";
+import { drillBlocks, figuresOf, pageSize, sampleSize, temporaryName } from "./drill";
+import { D1Api, R2Api, RecordUnavailable, RunRecord } from "./services";
 import type { FakeD1 } from "./testing/fakeD1";
 import { makeFakeD1 } from "./testing/fakeD1";
+import type { FakeR2 } from "./testing/fakeR2";
+import { makeFakeR2 } from "./testing/fakeR2";
 
 const runId = RunIdSchema.make("01jb3m5x7z9a2c4e6g8j0k2m4p");
 const otherRun: RunId = RunIdSchema.make("01jb3m5x7z9a2c4e6g8j0k2zzz");
@@ -38,12 +49,13 @@ const inputsOf = (
   ),
 });
 
-/** The world a block runs in here: the fake D1 API, a run's secrets and its record. */
-const worldOf = (fake: FakeD1) => {
+/** The world a block runs in here: the fake D1 and R2 APIs, a run's secrets and its record. */
+const worldOf = (fake: FakeD1, r2: FakeR2) => {
   const secrets = new Map<string, string>();
   const records: Array<Schema.Json> = [];
   let recordAway = 0;
   const services = Context.make(D1Api, fake.api).pipe(
+    Context.add(R2Api, r2.api),
     Context.add(
       Secrets,
       Secrets.of({
@@ -91,11 +103,12 @@ const drill = Effect.gen(function* () {
     "CREATE TABLE notes (body TEXT)",
     "INSERT INTO notes VALUES ('same'), ('same'), ('other')",
   ]);
-  const world = worldOf(fake);
+  const r2 = makeFakeR2();
+  const world = worldOf(fake, r2);
   const blocks = yield* drillBlocks;
   const run = (id: string, inputs: BlockInputs, step: StepContext = stepOf(id.split(".")[1]!)) =>
     Effect.exit(blockNamed(blocks, id).run(inputs, step, world.services));
-  return { fake, production, world, blocks, run };
+  return { fake, r2, production, world, blocks, run };
 });
 
 /** What a block returned; a test whose block failed fails here. */
@@ -120,7 +133,7 @@ const failedAs = (
   });
 
 describe("the drill's blocks", () => {
-  it.effect("are the six the restore drill uses, each with its declaration", () =>
+  it.effect("are the six the restore drill uses and the archive check, each declared", () =>
     Effect.gen(function* () {
       const blocks = yield* drillBlocks;
       expect(blocks.map((block) => `${block.spec.id}@${block.spec.version}`)).toEqual([
@@ -129,7 +142,8 @@ describe("the drill's blocks", () => {
         "d1.importExport@1",
         "d1.checkAgainstExport@1",
         "d1.destroyDatabase@2",
-        "record.restoreDrill@1",
+        "record.restoreDrill@2",
+        "archive.checkReplay@1",
       ]);
       expect(blocks.map((block) => block.uses)).toEqual([
         ["@aemeth/blocks/D1Api", "@aemeth/blocks/Secrets"],
@@ -138,6 +152,7 @@ describe("the drill's blocks", () => {
         ["@aemeth/blocks/D1Api"],
         ["@aemeth/blocks/D1Api"],
         ["@aemeth/blocks/RunRecord"],
+        ["@aemeth/blocks/D1Api", "@aemeth/blocks/R2Api"],
       ]);
     }),
   );
@@ -196,7 +211,9 @@ describe("the drill's blocks", () => {
         "record.restoreDrill",
         inputsOf({}, { rowsCompared: 6, checksum: outputs["checksum"]! }),
       );
-      expect(world.records).toEqual([{ rowsCompared: 6, checksum: outputs["checksum"] }]);
+      expect(world.records).toEqual([
+        { rowsCompared: 6, checksum: outputs["checksum"], runsChecked: null },
+      ]);
       expect(fake.effects).toEqual({ created: 1, deleted: 1, imported: 1, exported: 1 });
     }),
   );
@@ -296,7 +313,7 @@ describe("the drill's blocks", () => {
     it.effect("gives each item of a for-each a database of its own", () =>
       Effect.gen(function* () {
         const { fake, blocks } = yield* drill;
-        const world = worldOf(fake);
+        const world = worldOf(fake, makeFakeR2());
         const create = blockNamed(blocks, "d1.createTemporaryDatabase");
         const destroy = blockNamed(blocks, "d1.destroyDatabase");
         const made = [];
@@ -475,7 +492,167 @@ describe("the drill's blocks", () => {
           "RecordUnavailable (retryable)",
         );
         expect(Exit.isSuccess(yield* run("record.restoreDrill", inputsOf({})))).toBe(true);
-        expect(world.records).toEqual([{ rowsCompared: null, checksum: null }]);
+        expect(world.records).toEqual([{ rowsCompared: null, checksum: null, runsChecked: null }]);
+        yield* run("record.restoreDrill", inputsOf({}, { rowsCompared: 3, runsChecked: 2 }));
+        expect(world.records.at(-1)).toEqual({ rowsCompared: 3, checksum: null, runsChecked: 2 });
+      }),
+    );
+  });
+
+  describe("archive.checkReplay", () => {
+    const bucket = "aemeth-archive";
+    const asBucket = { kind: "cloudflare.r2.bucket", id: bucket };
+    const ids = Array.from({ length: 60 }, (_, n) =>
+      RunIdSchema.make(`01jb3m5x7z9a2c4e6g8j0k${String(n).padStart(4, "0")}`),
+    );
+    const succeededLog = (id: string) =>
+      archiveText(
+        [runStarted, mainSucceeded, runSucceeded].map((fact, seq) =>
+          eventAt(seq, { ...fact, runId: id }),
+        ),
+      );
+    const failedLog = (id: string) =>
+      archiveText(
+        [runStarted, mainFailed("Skip"), runFailed].map((fact, seq) =>
+          eventAt(seq, { ...fact, runId: id }),
+        ),
+      );
+
+    /** An index as the engine's migration makes it, with these runs, and the archive of each. */
+    const indexed = (
+      fake: FakeD1,
+      r2: FakeR2,
+      runs: ReadonlyArray<{
+        id: string;
+        state: string;
+        endedAt: number | null;
+        log?: string | undefined;
+      }>,
+    ) =>
+      Effect.gen(function* () {
+        const values = runs
+          .map(({ id, state, endedAt }) =>
+            endedAt === null
+              ? `('${id}', 'restore-drill', 3, '${state}', 1, NULL, NULL, NULL)`
+              : `('${id}', 'restore-drill', 3, '${state}', 1, ${endedAt}, 'runs/${id}.json', NULL)`,
+          )
+          .join(", ");
+        for (const run of runs) {
+          if (run.log !== undefined) {
+            r2.put(bucket, `runs/${run.id}.json`, run.log);
+          }
+        }
+        return yield* fake.seed("restored-index", [
+          "CREATE TABLE runs (id TEXT PRIMARY KEY, recipe_id TEXT NOT NULL, recipe_version INTEGER NOT NULL, state TEXT NOT NULL, started_at INTEGER NOT NULL, ended_at INTEGER, archive_key TEXT, result TEXT)",
+          `INSERT INTO runs VALUES ${values}`,
+        ]);
+      });
+
+    const check = (database: string) =>
+      inputsOf({ index: asDatabase(database), archive: asBucket });
+
+    it.effect("replays every archived run in the sample to the state the index records", () =>
+      Effect.gen(function* () {
+        const { fake, r2, run } = yield* drill;
+        const index = yield* indexed(fake, r2, [
+          { id: ids[0]!, state: "Succeeded", endedAt: 10, log: succeededLog(ids[0]!) },
+          { id: ids[1]!, state: "Failed", endedAt: 20, log: failedLog(ids[1]!) },
+          // Still going, with no archive yet: not in the sample.
+          { id: ids[2]!, state: "Running", endedAt: null },
+        ]);
+        expect(yield* run("archive.checkReplay", check(index.id))).toEqual(
+          Exit.succeed({ runsChecked: 2 }),
+        );
+        expect(r2.reads()).toBe(2);
+        // It only reads: run again, the same answer.
+        expect(yield* run("archive.checkReplay", check(index.id))).toEqual(
+          Exit.succeed({ runsChecked: 2 }),
+        );
+      }),
+    );
+
+    it.effect("reads the most recent runs to have ended, as many as the sample holds", () =>
+      Effect.gen(function* () {
+        const { fake, r2, run } = yield* drill;
+        // The oldest run's archive replays to another state; it is outside the sample.
+        const index = yield* indexed(
+          fake,
+          r2,
+          ids.map((id, n) => ({
+            id,
+            state: "Succeeded",
+            endedAt: 100 + n,
+            log: n === 0 ? failedLog(id) : succeededLog(id),
+          })),
+        );
+        expect(yield* run("archive.checkReplay", check(index.id))).toEqual(
+          Exit.succeed({ runsChecked: sampleSize }),
+        );
+      }),
+    );
+
+    it.effect("passes an index with no archived run, checking none", () =>
+      Effect.gen(function* () {
+        const { fake, r2, run } = yield* drill;
+        const index = yield* indexed(fake, r2, [{ id: ids[0]!, state: "Running", endedAt: null }]);
+        expect(yield* run("archive.checkReplay", check(index.id))).toEqual(
+          Exit.succeed({ runsChecked: 0 }),
+        );
+      }),
+    );
+
+    const disagreeing = [
+      ["replays to another state", (id: string) => failedLog(id)],
+      [
+        "is cut short",
+        (id: string) => succeededLog(id).replace(/,\{[^{}]*"RunSucceeded"[^]*\]$/u, "]"),
+      ],
+      ["is not a log", () => "not a log"],
+      ["is another run's log", () => succeededLog(ids[9]!)],
+      ["is not there", undefined],
+    ] as const;
+
+    for (const [what, log] of disagreeing) {
+      it.effect(`fails for good, naming the run, when an archive ${what}`, () =>
+        Effect.gen(function* () {
+          const { fake, r2, run } = yield* drill;
+          const planted = ids[1]!;
+          const index = yield* indexed(fake, r2, [
+            { id: ids[0]!, state: "Succeeded", endedAt: 10, log: succeededLog(ids[0]!) },
+            {
+              id: planted,
+              state: "Succeeded",
+              endedAt: 20,
+              log: log === undefined ? undefined : log(planted),
+            },
+          ]);
+          const exit = yield* run("archive.checkReplay", check(index.id));
+          expect(failedAs(exit)).toBe("ArchiveDisagrees");
+          expect(String(exit)).toContain(planted);
+          expect(String(exit)).not.toContain(`${ids[0]!}:`);
+        }),
+      );
+    }
+
+    it.effect("fails as the APIs do, retryable only when Cloudflare was away", () =>
+      Effect.gen(function* () {
+        const { fake, r2, run } = yield* drill;
+        const index = yield* indexed(fake, r2, [
+          { id: ids[0]!, state: "Succeeded", endedAt: 10, log: succeededLog(ids[0]!) },
+        ]);
+        r2.failNext("Unavailable");
+        expect(failedAs(yield* run("archive.checkReplay", check(index.id)))).toBe(
+          "R2Unavailable (retryable)",
+        );
+        r2.failNext("Refused");
+        expect(failedAs(yield* run("archive.checkReplay", check(index.id)))).toBe("R2Refused");
+        fake.failNext("query", "Unavailable");
+        expect(failedAs(yield* run("archive.checkReplay", check(index.id)))).toBe(
+          "D1Unavailable (retryable)",
+        );
+        // A database that is not an index of Aemeth's has no runs to read.
+        const other = yield* fake.seed("not-an-index", ["CREATE TABLE t (a)"]);
+        expect(failedAs(yield* run("archive.checkReplay", check(other.id)))).toBe("D1Refused");
       }),
     );
   });

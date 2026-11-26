@@ -128,7 +128,15 @@ export const makeFakeD1: Effect.Effect<FakeD1, never, Scope.Scope> = Effect.gen(
       Effect.gen(function* () {
         yield* faulted("query");
         const { sql } = yield* find("query", id);
-        return yield* run(sql, statement, params);
+        // As at Cloudflare, a statement SQLite refuses is a refused request.
+        return yield* sql
+          .unsafe<D1Row>(statement, params)
+          .pipe(
+            Effect.mapError(
+              (error) =>
+                new D1Failed({ reason: "Refused", operation: "query", message: error.message }),
+            ),
+          );
       }),
     exportDatabase: (id) =>
       Effect.gen(function* () {

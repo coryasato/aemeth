@@ -7,3 +7,4 @@
 export * from "./build";
 export { generatedCatalog } from "./generate";
 export * from "./play";
+export { eventAt, mainFailed, mainSucceeded, runFailed, runStarted, runSucceeded } from "./events";

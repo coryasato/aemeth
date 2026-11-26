@@ -1,0 +1,205 @@
+{
+  "$schema": "./recipe.schema.json",
+  "format": 1,
+  "id": "aemeth-restore-drill",
+  "version": 1,
+  "title": "Restore drill of Aemeth's own index",
+  "description": "Proves that a backup of Aemeth's index can be restored, and that the restored index agrees with the run archive. Production is only read.",
+  "start": "export",
+  "inputs": {
+    "production": {
+      "type": {
+        "_tag": "Resource",
+        "kind": "cloudflare.d1.database"
+      }
+    },
+    "archive": {
+      "type": {
+        "_tag": "Resource",
+        "kind": "cloudflare.r2.bucket"
+      }
+    }
+  },
+  "nodes": [
+    {
+      "_tag": "Step",
+      "id": "export",
+      "block": "d1.exportDatabase",
+      "version": 1,
+      "inputs": {
+        "database": {
+          "_tag": "RecipeInput",
+          "name": "production"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "createTemp",
+      "block": "d1.createTemporaryDatabase",
+      "version": 1,
+      "inputs": {
+        "namePrefix": {
+          "_tag": "Literal",
+          "value": "restore-drill"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "restore",
+      "block": "d1.importExport",
+      "version": 1,
+      "inputs": {
+        "export": {
+          "_tag": "StepOutput",
+          "step": "export",
+          "output": "export"
+        },
+        "into": {
+          "_tag": "StepOutput",
+          "step": "createTemp",
+          "output": "database"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "verify",
+      "block": "d1.checkAgainstExport",
+      "version": 1,
+      "inputs": {
+        "database": {
+          "_tag": "StepOutput",
+          "step": "createTemp",
+          "output": "database"
+        },
+        "rowCount": {
+          "_tag": "StepOutput",
+          "step": "export",
+          "output": "rowCount"
+        },
+        "checksum": {
+          "_tag": "StepOutput",
+          "step": "export",
+          "output": "checksum"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "checkArchive",
+      "block": "archive.checkReplay",
+      "version": 1,
+      "inputs": {
+        "index": {
+          "_tag": "StepOutput",
+          "step": "createTemp",
+          "output": "database"
+        },
+        "archive": {
+          "_tag": "RecipeInput",
+          "name": "archive"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "destroyTemp",
+      "block": "d1.destroyDatabase",
+      "version": 2,
+      "inputs": {
+        "database": {
+          "_tag": "OptionalStepOutput",
+          "step": "createTemp",
+          "output": "database"
+        },
+        "namePrefix": {
+          "_tag": "Literal",
+          "value": "restore-drill"
+        }
+      }
+    },
+    {
+      "_tag": "Step",
+      "id": "record",
+      "block": "record.restoreDrill",
+      "version": 2,
+      "inputs": {
+        "rowsCompared": {
+          "_tag": "OptionalStepOutput",
+          "step": "verify",
+          "output": "rowsCompared"
+        },
+        "checksum": {
+          "_tag": "OptionalStepOutput",
+          "step": "export",
+          "output": "checksum"
+        },
+        "runsChecked": {
+          "_tag": "OptionalStepOutput",
+          "step": "checkArchive",
+          "output": "runsChecked"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "export",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "createTemp"
+      }
+    },
+    {
+      "from": "createTemp",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "restore"
+      }
+    },
+    {
+      "from": "restore",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "verify"
+      }
+    },
+    {
+      "from": "verify",
+      "on": "Succeeded",
+      "to": {
+        "_tag": "Step",
+        "id": "checkArchive"
+      }
+    }
+  ],
+  "finally": ["destroyTemp", "record"],
+  "invariants": [
+    {
+      "rule": "NeverWritten",
+      "input": "production"
+    },
+    {
+      "rule": "NeverWritten",
+      "input": "archive"
+    },
+    {
+      "rule": "CleanedUp",
+      "step": "createTemp",
+      "output": "database"
+    },
+    {
+      "rule": "RequiredForSuccess",
+      "step": "verify"
+    },
+    {
+      "rule": "RequiredForSuccess",
+      "step": "checkArchive"
+    }
+  ]
+}

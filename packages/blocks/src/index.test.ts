@@ -20,6 +20,7 @@ describe("block declarations", () => {
     const groups = new Set(specs.map((spec) => spec.id.split(".")[0]));
     expect([...groups]).toEqual([
       "d1",
+      "archive",
       "alchemy",
       "workers",
       "secrets",

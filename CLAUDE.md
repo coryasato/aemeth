@@ -35,6 +35,7 @@ Run from the repository root. Each exits non-zero on failure.
 | `bun run knip` | Unused files, exports and dependencies |
 | `bun run check` | All of the above in that order, stopping at the first failure |
 | `bun run test:integration` | The integration suite in `infra/test`: deploys the stack to `$ALCHEMY_TEST_STAGE` (default `test_$USER`) on Cloudflare, drives the deployed engine, destroys the stage. Needs an Alchemy login with Access permission and `AEMETH_ACCESS_TEAM` set; see [infra/README.md](infra/README.md) |
+| `bun run drill:stages` | Not a check: deploys `staging` and `production` and runs the drill of Aemeth's own index, production against staging first, then against itself ([decision 0008](docs/decisions/0008-out-of-band-path.md)). It changes the stages that are kept; run it only when the owner asks |
 | `bun run mutate` | Stryker mutation testing on `packages/core`; fails below the `break` threshold in `packages/core/stryker.config.json` |
 
 Run `bun run check` before saying work is done; CI runs it and, in a job of its own, `bun run mutate --incremental` on every push, and `bun run test:integration` for every pull request. Run the integration suite yourself when a change touches `apps/engine/src/cloudflare`, `infra`, or how the engine stores a run; it creates and destroys real resources, so say so first. The pre-commit hook runs typecheck, lint and format check. Vitest and Stryker run on Node: never use `bun --bun` with them.

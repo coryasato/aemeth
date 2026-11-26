@@ -7,7 +7,12 @@
     "packages/*": {},
     "apps/*": {},
     "infra": {
-      "entry": ["vitest.integration.config.ts", "test/**/*.integ.ts"]
+      "entry": [
+        "vitest.integration.config.ts",
+        "vitest.stages.config.ts",
+        "test/**/*.integ.ts",
+        "test/**/*.drill.ts"
+      ]
     }
   },
   "ignoreDependencies": ["@effect/language-service"]
