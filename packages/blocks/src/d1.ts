@@ -17,108 +17,128 @@ import {
 const database = resource("cloudflare.d1.database");
 const exported = resource("cloudflare.d1.export");
 
+export const exportDatabaseSpec: Declaration = {
+  id: "d1.exportDatabase",
+  version: 1,
+  title: "Export a database",
+  kind: "Action",
+  inputs: { database: required(database) },
+  // The row count and checksum describe the exported state, so a later check does not depend
+  // on what the source database has become since.
+  outputs: { export: exported, rowCount: integer, checksum: text },
+  effects: [reads("database"), creates("export", "Expiring")],
+  undo: noUndo("The export is a download that expires by itself. There is nothing to delete."),
+  rerun,
+};
+
+export const createTemporaryDatabaseSpec: Declaration = {
+  id: "d1.createTemporaryDatabase",
+  version: 1,
+  title: "Create a temporary database",
+  kind: "Action",
+  inputs: { namePrefix: required(text) },
+  outputs: { database },
+  effects: [creates("database", "Temporary")],
+  undo: noUndo(
+    "The database is temporary and tagged with its run. The recipe destroys it in a finally step, which the CleanedUp invariant checks.",
+  ),
+  rerun,
+};
+
+export const importExportSpec: Declaration = {
+  id: "d1.importExport",
+  version: 1,
+  title: "Restore an export into a database",
+  kind: "Action",
+  inputs: { export: required(exported), into: required(database) },
+  outputs: {},
+  effects: [reads("export"), writes("into")],
+  undo: noUndo("Imported rows cannot be picked back out of a database."),
+  rerun,
+};
+
+export const checkAgainstExportSpec: Declaration = {
+  id: "d1.checkAgainstExport",
+  version: 1,
+  title: "Check that a database's row count and checksum match an export's",
+  kind: "Check",
+  inputs: { database: required(database), rowCount: required(integer), checksum: required(text) },
+  outputs: { rowsCompared: integer },
+  effects: [reads("database")],
+  undo: nothingToUndo,
+  rerun,
+};
+
+export const destroyDatabaseSpec: Declaration = {
+  id: "d1.destroyDatabase",
+  // Version 2 adds `namePrefix`: with no database given, the run's own is looked up by name
+  // (M2 decision 18).
+  version: 2,
+  title: "Destroy a database",
+  kind: "Action",
+  inputs: { database: optional(database), namePrefix: optional(text) },
+  outputs: {},
+  effects: [destroys("database")],
+  undo: noUndo("A destroyed database cannot be brought back."),
+  rerun,
+};
+
+const applyMigrationSpec: Declaration = {
+  id: "d1.applyMigration",
+  version: 1,
+  title: "Apply a migration",
+  kind: "Action",
+  inputs: { database: required(database), migration: required(text) },
+  outputs: {},
+  effects: [writes("database")],
+  undo: noUndo("A schema change can drop data, so it cannot be undone in general."),
+  rerun,
+};
+
+const smokeTestSpec: Declaration = {
+  id: "d1.smokeTest",
+  version: 1,
+  title: "Run a smoke test against a database",
+  kind: "Check",
+  inputs: { database: required(database), statement: required(text) },
+  outputs: {},
+  effects: [reads("database")],
+  undo: nothingToUndo,
+  rerun,
+};
+
+const captureBookmarkSpec: Declaration = {
+  id: "d1.captureBookmark",
+  version: 1,
+  title: "Capture a point to restore a database to",
+  kind: "Action",
+  inputs: { database: required(database) },
+  outputs: { bookmark: text },
+  effects: [reads("database")],
+  undo: nothingToUndo,
+  rerun,
+};
+
+const restoreToBookmarkSpec: Declaration = {
+  id: "d1.restoreToBookmark",
+  version: 1,
+  title: "Restore a database to a bookmark",
+  kind: "Action",
+  inputs: { database: required(database), bookmark: required(text) },
+  outputs: {},
+  effects: [writes("database")],
+  undo: noUndo("Restoring discards every write made after the bookmark."),
+  rerun,
+};
+
 export const d1: ReadonlyArray<Declaration> = [
-  {
-    id: "d1.exportDatabase",
-    version: 1,
-    title: "Export a database",
-    kind: "Action",
-    inputs: { database: required(database) },
-    // The row count and checksum describe the exported state, so a later check does not depend
-    // on what the source database has become since.
-    outputs: { export: exported, rowCount: integer, checksum: text },
-    effects: [reads("database"), creates("export", "Expiring")],
-    undo: noUndo("The export is a download that expires by itself. There is nothing to delete."),
-    rerun,
-  },
-  {
-    id: "d1.createTemporaryDatabase",
-    version: 1,
-    title: "Create a temporary database",
-    kind: "Action",
-    inputs: { namePrefix: required(text) },
-    outputs: { database },
-    effects: [creates("database", "Temporary")],
-    undo: noUndo(
-      "The database is temporary and tagged with its run. The recipe destroys it in a finally step, which the CleanedUp invariant checks.",
-    ),
-    rerun,
-  },
-  {
-    id: "d1.importExport",
-    version: 1,
-    title: "Restore an export into a database",
-    kind: "Action",
-    inputs: { export: required(exported), into: required(database) },
-    outputs: {},
-    effects: [reads("export"), writes("into")],
-    undo: noUndo("Imported rows cannot be picked back out of a database."),
-    rerun,
-  },
-  {
-    id: "d1.checkAgainstExport",
-    version: 1,
-    title: "Check that a database's row count and checksum match an export's",
-    kind: "Check",
-    inputs: { database: required(database), rowCount: required(integer), checksum: required(text) },
-    outputs: { rowsCompared: integer },
-    effects: [reads("database")],
-    undo: nothingToUndo,
-    rerun,
-  },
-  {
-    id: "d1.destroyDatabase",
-    version: 1,
-    title: "Destroy a database",
-    kind: "Action",
-    inputs: { database: optional(database) },
-    outputs: {},
-    effects: [destroys("database")],
-    undo: noUndo("A destroyed database cannot be brought back."),
-    rerun,
-  },
-  {
-    id: "d1.applyMigration",
-    version: 1,
-    title: "Apply a migration",
-    kind: "Action",
-    inputs: { database: required(database), migration: required(text) },
-    outputs: {},
-    effects: [writes("database")],
-    undo: noUndo("A schema change can drop data, so it cannot be undone in general."),
-    rerun,
-  },
-  {
-    id: "d1.smokeTest",
-    version: 1,
-    title: "Run a smoke test against a database",
-    kind: "Check",
-    inputs: { database: required(database), statement: required(text) },
-    outputs: {},
-    effects: [reads("database")],
-    undo: nothingToUndo,
-    rerun,
-  },
-  {
-    id: "d1.captureBookmark",
-    version: 1,
-    title: "Capture a point to restore a database to",
-    kind: "Action",
-    inputs: { database: required(database) },
-    outputs: { bookmark: text },
-    effects: [reads("database")],
-    undo: nothingToUndo,
-    rerun,
-  },
-  {
-    id: "d1.restoreToBookmark",
-    version: 1,
-    title: "Restore a database to a bookmark",
-    kind: "Action",
-    inputs: { database: required(database), bookmark: required(text) },
-    outputs: {},
-    effects: [writes("database")],
-    undo: noUndo("Restoring discards every write made after the bookmark."),
-    rerun,
-  },
+  exportDatabaseSpec,
+  createTemporaryDatabaseSpec,
+  importExportSpec,
+  checkAgainstExportSpec,
+  destroyDatabaseSpec,
+  applyMigrationSpec,
+  smokeTestSpec,
+  captureBookmarkSpec,
+  restoreToBookmarkSpec,
 ];

@@ -48,6 +48,11 @@ export class RunIndex extends Context.Service<
       readonly at: number;
       readonly archiveKey: string;
     }) => Effect.Effect<void, IndexFailed>;
+    /** Writes what a record block found, such as the rows a drill compared, on the run's row. */
+    readonly record: (run: {
+      readonly runId: RunId;
+      readonly result: Schema.Json;
+    }) => Effect.Effect<void, IndexFailed>;
     readonly find: (runId: RunId) => Effect.Effect<RunRow | undefined, IndexFailed>;
   }
 >()("@aemeth/engine/RunIndex") {}

@@ -11,6 +11,10 @@ import { workers } from "./workers";
 
 export type { Block, BlockInputs, BlockOutputs, StepContext } from "./implement";
 export { BlockFailed, implement, Secrets } from "./implement";
+export type { D1Database, D1FailureReason, D1Row } from "./services";
+export { D1Api, D1Failed, RecordUnavailable, RunRecord } from "./services";
+export type { Figures } from "./drill";
+export { drillBlocks, figuresOf, temporaryName } from "./drill";
 
 /**
  * Every block the six recipes use, as written: what each one takes, returns, touches and how it

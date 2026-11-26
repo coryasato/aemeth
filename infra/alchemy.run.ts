@@ -1,4 +1,4 @@
-import { CiToken, EngineWorker } from "@aemeth/engine/cloudflare";
+import { CiToken, currentStage, EngineWorker, SampleDatabase } from "@aemeth/engine/cloudflare";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Alchemy from "alchemy";
 import { Effect } from "effect";
@@ -11,7 +11,8 @@ import { Effect } from "effect";
  * path of decision 0008.
  *
  * The Worker brings its own resources with it: the cluster's Durable Object classes, the index
- * database with its migrations, the archive bucket, and the Access application in front.
+ * database with its migrations, the archive bucket, and the Access application in front. A stage
+ * that is thrown away also has the seeded sample database the restore drill is run against.
  */
 export default Alchemy.Stack(
   "Aemeth",
@@ -19,12 +20,16 @@ export default Alchemy.Stack(
   Effect.gen(function* () {
     const engine = yield* EngineWorker;
     const token = yield* CiToken;
+    const sample =
+      (yield* currentStage) === "ThrownAway" ? (yield* SampleDatabase).databaseId : undefined;
     return {
       url: engine.url,
       // What a caller that is not a person presents to Access. The secret is redacted in the
       // output and in the state; the integration tests read it from the deploy they make.
       ciClientId: token.clientId,
       ciClientSecret: token.clientSecret,
+      // The id the restore drill is given as its `production` on this stage, if it has one.
+      sampleId: sample,
     };
   }),
 );

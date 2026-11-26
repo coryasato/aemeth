@@ -13,7 +13,7 @@ Verified on 2026-11-23 and re-checked in M1 Part A the same day, in M2 Part A on
 | `@effect/platform-bun`, `@effect/platform-node` | 4.1.5 | Peers of the Alchemy provider; nothing here imports them |
 | `@effect/sql-sqlite-node` | 4.1.5 | SQLite through Node's own `node:sqlite`, no native build. Dev dependency of `apps/engine`: the engine's SQL log is tested on it |
 | `@cloudflare/workers-types` | 5.20261125.1 | The Workers runtime's global types, for `apps/engine` and `infra`. The same version the Alchemy provider brings in |
-| `@distilled.cloud/cloudflare` | 1.0.0-rc.20 | An Effect client for the Cloudflare REST API, a dependency of the provider. Candidate for the D1 blocks; not yet run in a Worker |
+| `@distilled.cloud/cloudflare` | 1.0.0-rc.20 | An Effect client for the Cloudflare REST API, a dependency of the provider. The integration suite lists and deletes D1 databases with it (`infra`, dev only); the D1 blocks use a client of Aemeth's own (M2 decision 36) |
 | `foldkit` | 0.171.0 | npm release matches the main branch. Peer: `effect ~4.1.0` |
 | `@foldkit/vite-plugin` | 0.29.1 | Peer: `vite ^8` |
 | `@foldkit/ui`, `@foldkit/devtools` | 0.171.0 line | Headless components; time-travel overlay |
@@ -56,7 +56,8 @@ Verified on 2026-11-23 and re-checked in M1 Part A the same day, in M2 Part A on
 ## Verified in M0 Part C (2026-11-23)
 
 - Stryker runs `packages/core` with Vitest 5 under Bun's isolated linker. Its sandbox breaks a relative tsconfig `extends` unless the sandbox copies the repository from its root, so `bun run mutate` runs Stryker from the root.
-- GitHub Actions: `actions/checkout@v7.0.1`, `oven-sh/setup-bun@v2.2.0`, `actions/setup-node@v7.1.0` are the latest releases. CI pins Bun 1.4.4 and Node 26.12.1.
+- GitHub Actions: `actions/checkout@v7.0.1`, `oven-sh/setup-bun@v2.2.0`, `actions/setup-node@v7.1.0` are the latest releases. CI pins Bun 1.4.4 and Node 26.12.1. `actions/cache@v6.1.0` (its `restore` and `save` actions) keeps the mutation run's incremental results; latest release on 2026-11-25 (M2 Part D).
+- **`effect` 4.1.5 has JOSE and crypto modules,** `effect/jose` and `effect/crypto`, both marked unstable. The engine checks Access tokens with `Jwt.verifyWithKeySet` and `Jwks.layerRemote`; the drill's blocks hash with `Digest` (SHA-256, and a pure MD5 for D1's import etag). They are allowed by name in `tsconfig.base.json` (M2 Part D).
 
 ## Verified in M1 Part A (2026-11-23)
 
@@ -133,14 +134,14 @@ Run against the owner's Cloudflare account on a stage that was destroyed afterwa
 - `RemovalPolicy.retain` and `forceDestroy` take the stage through `Effect.map(Stack, ...)`. Not yet seen at work: nothing has been deployed to `production`.
 - `@effect/tsgo` reported `import.meta.url` as unknown only where it was written inside a resource's props; the same expression in a `const` above it is accepted.
 - `alchemy state ls --backend cloudflare` creates the state store if there is none. It is not a read.
+- The D1 REST calls the drill makes work from Bun and from inside a Worker (M2 Part D, 2026-11-26): `PRAGMA table_info` through the query API, text parameters, the export's polling and signed R2 link, the import's four calls. D1 exports a database once at a time and fails its queries meanwhile (M2 gap 22).
+- Why a block's span is missing from Cloudflare's traces is answered by M2 gap 16 and decision 34: `@effect/platform-cloudflare`'s workflow runtime runs an attempt outside the invocation that started it.
 - The integration workflow passed in GitHub Actions on the first pull request, in about four minutes, with `CLOUDFLARE_ACCOUNT_ID` and an API token as repository secrets under `CI=true`. The permissions the token is thought to need are in [../infra/README.md](../infra/README.md).
 
 ## Not yet verified
 
 - PlanetScale Postgres branching, before the Postgres variant of recipe 4.
 - D1's point-in-time restore to a bookmark, which recipe 4's revert step assumes, before M7. Read in M2 Part A: it restores in place through REST or Wrangler, for 30 days on Workers Paid.
-- `@distilled.cloud/cloudflare` and the D1 REST calls from inside a Worker, in M2 Part D.
-- Why a block's span is missing from Cloudflare's traces for the first step of a run, and cut at 60 seconds with no attributes for a step that ran 90 (M2 gap 16).
 - Production's data kept on destroy, in M2 Part E.
 
 ## Documentation sources

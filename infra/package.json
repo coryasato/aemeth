@@ -16,6 +16,7 @@
     "@aemeth/core": "workspace:*",
     "@alchemy.run/test": "2.0.0-beta.87",
     "@cloudflare/workers-types": "5.20261125.1",
+    "@distilled.cloud/cloudflare": "1.0.0-rc.20",
     "@effect/vitest": "4.1.5",
     "vitest": "5.1.1"
   }

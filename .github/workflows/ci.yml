@@ -11,7 +11,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: oven-sh/setup-bun@v2.2.0
@@ -22,4 +22,36 @@ jobs:
           node-version: 26.12.1
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - run: bun run mutate
+
+  # Mutation testing of packages/core, beside `check` (M2 Part D). Stryker's incremental mode
+  # tests again only the mutants whose code or tests changed since the results it is given: this
+  # branch's last run, or failing that master's. A run with nothing to start from is a full run,
+  # which on GitHub's runners takes longer than on a laptop, hence the limit.
+  mutate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: 1.4.4
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26.12.1
+      - run: bun install --frozen-lockfile
+      - name: Restore the last mutation results
+        uses: actions/cache/restore@v6.1.0
+        with:
+          path: reports/stryker-incremental.json
+          key: stryker-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            stryker-${{ github.ref_name }}-
+            stryker-master-
+      - run: bun run mutate --incremental
+      # Kept even when the score is below the threshold: the next run starts from it.
+      - name: Keep the mutation results for the next run
+        if: always()
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: reports/stryker-incremental.json
+          key: stryker-${{ github.ref_name }}-${{ github.sha }}

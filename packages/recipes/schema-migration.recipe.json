@@ -2,7 +2,7 @@
   "$schema": "./recipe.schema.json",
   "format": 1,
   "id": "schema-migration",
-  "version": 1,
+  "version": 2,
   "title": "Schema migration",
   "description": "Applies a database migration to a copy first, then, after approval, to production, and restores production if the smoke test fails.",
   "start": "export",
@@ -182,12 +182,16 @@
       "_tag": "Step",
       "id": "destroyCopy",
       "block": "d1.destroyDatabase",
-      "version": 1,
+      "version": 2,
       "inputs": {
         "database": {
           "_tag": "OptionalStepOutput",
           "step": "createCopy",
           "output": "database"
+        },
+        "namePrefix": {
+          "_tag": "Literal",
+          "value": "schema-migration"
         }
       }
     }

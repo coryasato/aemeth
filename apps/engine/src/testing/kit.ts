@@ -1,5 +1,7 @@
 import type { Block, BlockInputs, BlockOutputs, StepContext } from "@aemeth/blocks";
-import { BlockFailed, implement, Secrets } from "@aemeth/blocks";
+import { BlockFailed, drillBlocks, implement, Secrets } from "@aemeth/blocks";
+import type { FakeD1 } from "@aemeth/blocks/testing";
+import { makeFakeD1 } from "@aemeth/blocks/testing";
 import type { BlockSpec, EventRejected, RunEvent, RunId, RunState } from "@aemeth/core";
 import { followsRecipe, validate } from "@aemeth/core";
 import {
@@ -28,7 +30,15 @@ import { IndexFailed, RunIndex } from "../RunIndex";
 import type { Fact, RunNotFound } from "../RunLog";
 import { isFinal, layerMemory, RunLog } from "../RunLog";
 import { RunWorkflow, RunWorkflowLayer } from "../RunWorkflow";
-import { Blocks, BlockServices, offer, Recipes, secretsOffer } from "../services";
+import {
+  Blocks,
+  BlockServices,
+  d1Offer,
+  offer,
+  Recipes,
+  runRecordOffer,
+  secretsOffer,
+} from "../services";
 
 // What the engine's tests run on: the real driver, log and workflow, on the in-memory workflow
 // engine, with blocks whose outcomes a test scripts. Nothing here is infrastructure.
@@ -210,6 +220,10 @@ export type Kit = {
   archiveCuts: number;
   /** Set by a test that leaves a finished run without its archive on purpose. */
   unarchivedOnPurpose: boolean;
+  /** The fake D1 API the drill's blocks are given. */
+  d1: FakeD1 | undefined;
+  /** A step of the drill whose block fails for good, before it does anything. */
+  drillFault: string | undefined;
 };
 
 /** Outputs that fit the block's declaration, with two items in every list. */
@@ -240,6 +254,8 @@ const makeKit = (): Kit => ({
   recordFaults: 0,
   archiveCuts: 0,
   unarchivedOnPurpose: false,
+  d1: undefined,
+  drillFault: undefined,
 });
 
 /** Whether this write is one of those a test told to fail. Asked when the write runs. */
@@ -309,8 +325,43 @@ const indexOf = (kit: Kit) =>
           kit.index.set(runId, { ...row, state, endedAt: at, archiveKey });
           return Effect.void;
         }),
+      record: ({ runId, result }) =>
+        Effect.suspend(() => {
+          const row = kit.index.get(runId);
+          if (faulted(kit) || row === undefined) {
+            return Effect.fail(new IndexFailed({ message: "The index is away." }));
+          }
+          kit.index.set(runId, { ...row, result });
+          return Effect.void;
+        }),
       find: (runId) => Effect.sync(() => kit.index.get(runId)),
     }),
+  );
+
+/**
+ * The fake blocks and the drill's real ones. A drill block fails for good, doing nothing, when
+ * its step is the kit's `drillFault`: the test-only fault of M2 Part D, D3.
+ */
+const drillOf = (kit: Kit) =>
+  Layer.unwrap(
+    Effect.map(drillBlocks, (drill) =>
+      Blocks.layer([
+        ...blocks,
+        ...drill.map((each): Block => ({
+          ...each,
+          run: (inputs, step, services) =>
+            kit.drillFault === step.step
+              ? Effect.fail(
+                  new BlockFailed({
+                    reason: "PlantedFault",
+                    message: `The test failed ${step.step}.`,
+                    retryable: false,
+                  }),
+                )
+              : each.run(inputs, step, services),
+        })),
+      ]),
+    ),
   );
 
 const layerOf = (kit: Kit) => {
@@ -332,10 +383,16 @@ const layerOf = (kit: Kit) => {
     ),
   ).pipe(Layer.provide(layerMemory));
   const services = Layer.effect(BlockServices)(
-    Effect.map(secretsOffer, (secrets) =>
-      BlockServices.of({
+    Effect.gen(function* () {
+      const secrets = yield* secretsOffer;
+      const record = yield* runRecordOffer;
+      const d1 = yield* makeFakeD1;
+      kit.d1 = d1;
+      return BlockServices.of({
         offers: [
           secrets,
+          record,
+          d1Offer(d1.api),
           offer(Stage, (step) =>
             Effect.succeed(
               Stage.of({
@@ -357,8 +414,8 @@ const layerOf = (kit: Kit) => {
             ),
           ),
         ],
-      }),
-    ),
+      });
+    }),
   );
   const waker = Layer.effect(Waker)(
     Effect.map(Waker, (base) =>
@@ -380,9 +437,7 @@ const layerOf = (kit: Kit) => {
   );
   return Layer.mergeAll(engineLayer, RunWorkflowLayer).pipe(
     Layer.provideMerge(Layer.mergeAll(waker, services)),
-    Layer.provideMerge(
-      Layer.mergeAll(log, Blocks.layer(blocks), recipes, archiveOf(kit), indexOf(kit)),
-    ),
+    Layer.provideMerge(Layer.mergeAll(log, drillOf(kit), recipes, archiveOf(kit), indexOf(kit))),
     Layer.provideMerge(WorkflowEngine.layerMemory),
     Layer.provideMerge(Layer.succeed(Tracer.Tracer, tracer)),
   );
