@@ -97,6 +97,20 @@ export const indexOn = (
           ),
           withHost,
         ),
+    record: ({ runId, result }) =>
+      database
+        .prepare("UPDATE runs SET result = ?2 WHERE id = ?1")
+        .bind(runId, JSON.stringify(result))
+        .run()
+        .pipe(
+          failing((message) => new IndexFailed({ message })),
+          Effect.flatMap((written) =>
+            written.meta.changes === 1
+              ? Effect.void
+              : Effect.fail(new IndexFailed({ message: `The index has no row for ${runId}.` })),
+          ),
+          withHost,
+        ),
     find: (runId) =>
       Effect.gen(function* () {
         const found = yield* database

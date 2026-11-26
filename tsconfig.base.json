@@ -43,6 +43,18 @@
             }
           },
           {
+            "include": ["packages/blocks/**/*.ts"],
+            "options": {
+              "allowedUnstableApis": [
+                "effect/crypto",
+                "effect/sql",
+                "effect/reactivity",
+                "@effect/sql-sqlite-node",
+                "@effect/vitest"
+              ]
+            }
+          },
+          {
             "include": ["apps/engine/**/*.ts"],
             "options": {
               "diagnosticSeverity": {
@@ -56,6 +68,8 @@
                 "effect/http",
                 "effect/sql",
                 "effect/reactivity",
+                "effect/jose",
+                "effect/crypto",
                 "@effect/sql-sqlite-node",
                 "@effect/vitest"
               ]

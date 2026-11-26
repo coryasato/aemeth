@@ -56,7 +56,8 @@ Verified on 2026-11-23 and re-checked in M1 Part A the same day, in M2 Part A on
 ## Verified in M0 Part C (2026-11-23)
 
 - Stryker runs `packages/core` with Vitest 5 under Bun's isolated linker. Its sandbox breaks a relative tsconfig `extends` unless the sandbox copies the repository from its root, so `bun run mutate` runs Stryker from the root.
-- GitHub Actions: `actions/checkout@v7.0.1`, `oven-sh/setup-bun@v2.2.0`, `actions/setup-node@v7.1.0` are the latest releases. CI pins Bun 1.4.4 and Node 26.12.1.
+- GitHub Actions: `actions/checkout@v7.0.1`, `oven-sh/setup-bun@v2.2.0`, `actions/setup-node@v7.1.0` are the latest releases. CI pins Bun 1.4.4 and Node 26.12.1. `actions/cache@v6.1.0` (its `restore` and `save` actions) keeps the mutation run's incremental results; latest release on 2026-11-25 (M2 Part D).
+- **`effect` 4.1.5 has JOSE and crypto modules,** `effect/jose` and `effect/crypto`, both marked unstable. The engine checks Access tokens with `Jwt.verifyWithKeySet` and `Jwks.layerRemote`; the drill's blocks hash with `Digest` (SHA-256, and a pure MD5 for D1's import etag). They are allowed by name in `tsconfig.base.json` (M2 Part D).
 
 ## Verified in M1 Part A (2026-11-23)
 

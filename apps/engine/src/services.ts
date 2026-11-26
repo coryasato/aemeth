@@ -1,7 +1,8 @@
 import type { Block, StepContext } from "@aemeth/blocks";
-import { Secrets } from "@aemeth/blocks";
+import { D1Api, RecordUnavailable, RunRecord, Secrets } from "@aemeth/blocks";
 import type { BlockId, BlockSpec, Version } from "@aemeth/core";
 import { Context, Duration, Effect, Layer } from "effect";
+import { RunIndex } from "./RunIndex";
 import { RunLog } from "./RunLog";
 
 /**
@@ -72,6 +73,23 @@ export const secretsOffer: Effect.Effect<Offer, never, RunLog> = Effect.map(RunL
     ),
   ),
 );
+
+/** The run's row in the index, for a record block (M2, "Persistence"). */
+export const runRecordOffer: Effect.Effect<Offer, never, RunIndex> = Effect.map(RunIndex, (index) =>
+  offer(RunRecord, ({ runId }) =>
+    Effect.succeed(
+      RunRecord.of({
+        write: (result) =>
+          index
+            .record({ runId, result })
+            .pipe(Effect.mapError((error) => new RecordUnavailable({ message: error.message }))),
+      }),
+    ),
+  ),
+);
+
+/** Cloudflare's D1 API, for the drill's blocks, with the engine's own token (M2 decision 12). */
+export const d1Offer = (api: D1Api["Service"]): Offer => offer(D1Api, () => Effect.succeed(api));
 
 /**
  * How often a step, a `finally` step or an undo is tried, and how long the engine waits before

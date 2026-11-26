@@ -17,11 +17,14 @@ const recordBlock = (id: string, title: string, inputs: Declaration["inputs"]): 
   rerun,
 });
 
+export const recordRestoreDrillSpec = recordBlock(
+  "record.restoreDrill",
+  "Record the result of a restore drill",
+  { rowsCompared: optional(integer), checksum: optional(text) },
+);
+
 export const record: ReadonlyArray<Declaration> = [
-  recordBlock("record.restoreDrill", "Record the result of a restore drill", {
-    rowsCompared: optional(integer),
-    checksum: optional(text),
-  }),
+  recordRestoreDrillSpec,
   recordBlock("record.cleanup", "Record what a cleanup was approved to destroy", {
     approvedStacks: optional(list(stack)),
     approvedOrphans: optional(list(orphan)),

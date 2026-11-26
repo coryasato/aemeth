@@ -108,6 +108,9 @@ const call: typeof once = (method, path, options = {}) =>
 const asked = (waitingFor: string, anonymous: boolean, done: (answer: Answer) => boolean) =>
   call("GET", "/runs/00000000000000000000000000", { anonymous }).pipe(
     Effect.orElseSucceed((): Answer => ({ status: 0, text: "", location: "" })),
+    Effect.tap((answer) =>
+      Effect.logInfo(`Waiting for ${waitingFor}: ${answer.status} ${answer.text.slice(0, 80)}`),
+    ),
     Effect.repeat({ schedule: Schedule.spaced("3 seconds"), until: done, times: 60 }),
     Effect.flatMap((answer) =>
       done(answer)
